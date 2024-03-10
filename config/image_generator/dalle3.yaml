@@ -1,0 +1,5 @@
+_target_: magic_tales.image_generators.dalle3.DALLE3ImageGenerator
+num_images: 1
+size: "1024x1024"
+quality: "hd"
+

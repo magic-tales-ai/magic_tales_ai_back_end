@@ -1,0 +1,1221 @@
+import os
+import re
+from word2number import w2n
+import copy
+import asyncio
+from typing import List, Tuple, Optional, Dict, Union, Any
+from omegaconf import DictConfig
+from hydra import initialize, compose
+from hydra.utils import instantiate
+import traceback
+from sqlalchemy import desc, select
+from sqlalchemy.orm import Session
+
+
+import logging
+import nest_asyncio
+
+from fastapi import WebSocket
+
+nest_asyncio.apply()
+
+from services.chat_assistant.chat_assistant import ChatAssistant
+from services.MessageSender import MessageSender
+from services.info_extractor.info_extractor import InfoExtractor
+from services.utils.file_utils import (
+    create_new_story_directory,
+    get_latest_story_directory,
+    convert_user_info_to_json_files,
+    convert_user_info_to_md_files,
+)
+from services.chapter_generator.chapter_generation_mechanism import (
+    ChapterGenerationMechanism,
+)
+from services.doc_generator.doc import StoryDocument
+from services.image_prompt_generator.image_prompt_generation_mechanism import (
+    ImagePromptGenerationMechanism,
+)
+from services.image_generators.dalle3 import DALLE3ImageGenerator
+from services.utils.log_utils import get_logger
+from services.SessionService import refresh_access_token
+
+from data_structures.story_state import StoryState
+from data_structures.story import Story, StoryData, StorySchema
+from data_structures.command import Command
+from data_structures.response import ResponseStatus
+from data_structures.message import Message, OriginEnum, TypeEnum
+from data_structures.profile import Profile
+from data_structures.user import User
+from data_structures.ws_input import WSInput
+from data_structures.ws_output import WSOutput
+from data_structures.message import MessageSchema
+
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+# Get a logger instance for this module
+logger = get_logger(__name__)
+
+
+os.environ["NUMEXPR_MAX_THREADS"] = "16"  # Set to the number of cores you wish to use
+
+
+class MagicTalesCoreOrchestrator:
+    """
+    Core orchestrator for Magic Tales application. Manages the story generation process.
+    """
+
+    steps_execution_mapping: Dict[StoryState, str] = {
+        StoryState.USER_FACING_CHAT: "_user_facing_chat",
+        StoryState.STORY_TITLE_GENERATION: "_generate_story_title",
+        StoryState.STORY_GENERATION: "_generate_story",
+        StoryState.IMAGE_PROMPT_GENERATION: "_generate_image_prompts",
+        StoryState.IMAGE_GENERATION: "_generate_images",
+        StoryState.DOCUMENT_GENERATION: "_generate_final_document",
+    }
+
+    def __init__(
+        self,
+        config: DictConfig,
+        message_sender: MessageSender,
+        session: Session,
+        websocket: WebSocket,
+    ) -> None:
+        """
+        Initialize the Magic Tales Core server.
+
+        Args:
+            config (DictConfig): Configuration parameters.
+        """
+        # Initialize logging
+        logger.info("Initializing MagicTales.")
+
+        self._validate_openai_api_key()
+
+        # Configuration
+        self.config = copy.deepcopy(config)
+
+        # Initialize the Info Extractor
+        self.info_extractor = InfoExtractor(config.info_extractor)
+
+        # Subfolders for storing various assets
+        self.subfolders = {"images": "images", "chapters": "chapters"}
+
+        # Initialize story-related data with default or empty values
+        self.story_data = StoryData()
+
+        self.chapter_generation_mechanism = None
+
+        self.latest_story_dir = None
+
+        self.message_sender = message_sender
+        self.session = session
+        self.websocket = websocket
+        self.token_data = None
+        self.user_id = None
+        self.new_token = None
+
+        self.knowledge_base_files = None
+
+        logger.info("MagicTales initialized.")
+
+    def _validate_openai_api_key(self) -> None:
+        """Validates the presence of the OpenAI API key."""
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is not set.")
+
+    async def process(self, request: WSInput, token_data: dict) -> dict:
+        """
+        Process incoming commands from the AI Core Interface Layer ().
+
+        Args:
+            data (dict): Full command structure. Please look at the ICS docs for more details.
+
+        Returns:
+            dict: Response data to be sent back to the AI Core Interface Layer.
+        """
+        logger.debug(request.token)  # DEBUG
+
+        # Refresh access token and set user_id if isn't try_mode
+        if request.try_mode is False or None:
+            self.token_data = token_data
+            self.new_token = refresh_access_token(request.token)
+            self.user_id = token_data.get("user_id")
+        else:
+            self.token_data = None
+            self.new_token = None
+            self.user_id = None
+
+        # CONVERSATION FOR ALL COMMANDS
+        conversation = Message(
+            user_id=self.user_id,
+            session_id=self.websocket.uid,
+            command=request.command,
+            origin=OriginEnum.user,
+            type=(
+                TypeEnum.chat
+                if request.command == Command.USER_MESSAGE
+                else TypeEnum.command
+            ),
+            details=request.model_dump(),
+        )
+        await self._db_add_message_to_session(conversation)
+
+        # ORCH must process EVERY COMAND and delegate in CHAT ASSISTANT
+        # ORCH send the ACK message to USER
+
+        # NEW STORIE
+        if request.command == Command.NEW_TALE:
+            await self.send_message_to_frontend(
+                WSOutput(command=request.command, token=self.new_token, ack=True)
+            )
+            asyncio.create_task(self._handle_new_tale(request))
+
+        elif request.command == Command.SPIN_OFF:
+            if not request.story_id:
+                raise Exception("story_id is required for spin-off")
+
+            await self.send_message_to_frontend(
+                WSOutput(
+                    command=request.command,
+                    token=self.new_token,
+                    ack=True,
+                    data={"story_parent_id": request.story_id},
+                )
+            )
+            asyncio.create_task(self._handle_spin_off_tale(request))
+
+        # UPDATE PROFILE
+        if request.command == Command.USER_REQUEST_UPDATE_PROFILE:
+            if not request.profile_id:
+                raise Exception("profile_id is required for update profile")
+
+            await self.send_message_to_frontend(
+                WSOutput(command=request.command, token=self.new_token, ack=True)
+            )
+            asyncio.create_task(self._handle_user_request_update_profile(request))
+            # await self.chat_assistant.process(request)
+
+        # CONVERSATION RECOVERY
+        # this command is necesary to recover a current and not finished conversation
+        # the recover is based on CHAT TABLE records
+        #
+        elif request.command == Command.CONVERSATION_RECOVERY:
+            if not self.websocket.uid:
+                raise Exception(
+                    "uid is required for conversation recovery"
+                )  # SESSION/CONVERSATION ID
+
+            # read current conversation (CHAT ID)
+            conversations = await self.get_messages_by_session_id(self.websocket.uid)
+            conversation_dicts = [
+                MessageSchema().dump(conversation) for conversation in conversations
+            ]
+            # send full conversation to CLIENTE/USER (to rebuild it)
+            await self.send_message_to_frontend(
+                WSOutput(
+                    command=request.command,
+                    token=self.new_token,
+                    data={"conversations": conversation_dicts},
+                )
+            )
+            # > tell BOT to process the COMMMAND
+            # await self.chat_assistant.process(request)
+
+        # ASSOCIATE USER WITH CONVERSATIONS
+        elif request.command == Command.LINK_USER_WITH_CONVERSATIONS:
+            if not self.user_id:
+                raise Exception("user_id is required for link user with conversations")
+
+            if not request.session_ids:
+                raise Exception(
+                    "session_ids is required for link user with conversations"
+                )  # SESSION/CONVERSATION ID
+
+            await self._db_link_user_with_conversations(request.session_ids)
+            await self.send_message_to_frontend(
+                WSOutput(command=request.command, token=self.new_token, ack=True)
+            )
+
+        elif request.command == Command.USER_MESSAGE:
+            ai_response = await self._handle_user_message(request)
+            # Send the response to the AI Core Interface Layer to be sent to the Front End
+            await self.send_message_to_frontend(ai_response)
+
+        logger.info(f"Processed command: {request.command}")
+
+    async def send_message_to_frontend(self, output_model: WSOutput):
+        message = Message(
+            user_id=self.user_id,
+            session_id=self.websocket.uid,
+            command=output_model.command,
+            origin=OriginEnum.ai,
+            type=TypeEnum.command,
+            details=output_model.dict(),
+        )
+        await self._db_add_message_to_session(message)
+        await self.message_sender.send_message_to_frontend(output_model)
+
+    # ---------------------------------------------- Getters methods ----------------------------------------------
+
+    async def get_user_by_id(self, id) -> User:
+        return self.session.get(User, id)
+
+    async def get_profile_by_id(self, id) -> Profile:
+        return self.session.get(Profile, id)
+
+    async def get_story_by_id(self, id) -> Story:
+        return self.session.get(Story, id)
+
+    async def get_stories_by_user_id(self, user_id) -> List[Story]:
+        profiles_ids = (
+            self.session.execute(select(Profile.id).where(Profile.user_id == user_id))
+            .scalars()
+            .all()
+        )
+        return (
+            self.session.execute(
+                select(Story).filter(Story.profile_id.in_(profiles_ids))
+            )
+            .scalars()
+            .all()
+        )
+
+    async def get_stories_by_profile_id(self, profile_id) -> List[Story]:
+        return (
+            self.session.execute(select(Story).where(Story.profile_id == profile_id))
+            .scalars()
+            .all()
+        )
+
+    async def get_messages_by_session_id(self, session_id) -> List[Message]:
+        return (
+            self.session.execute(
+                select(Message)
+                .where(Message.session_id == session_id, Message.type == "chat")
+                .order_by(desc(Message.session_id), Message.id)
+            )
+            .scalars()
+            .all()
+        )
+
+    # ---------------------------------------------- End getters methods ------------------------------------------
+
+    def create_progress_update(self, **kwargs) -> dict:
+        """
+        Creates a progress update message in JSON format.
+
+        This method dynamically constructs a progress update message based on the provided keyword arguments.
+
+        Args:
+            **kwargs: Keyword arguments representing various components of the progress update message.
+
+        Returns:
+            dict: The constructed progress update message in JSON format.
+
+        Example usage:
+            create_progress_update(story_state="STORY_GENERATION", status=ResponseStatus.STARTED, progress_percent=50, message="Story generation in progress")
+        """
+
+        # Base structure for the progress update message
+        progress_update = WSOutput(
+            command=Command.PROGRESS_UPDATE,
+        )
+
+        # Update the progress update message with provided keyword arguments
+        for key, value in kwargs.items():
+            if key in progress_update:
+                progress_update[key] = value
+            else:
+                raise KeyError(f"Invalid progress update parameter: '{key}'")
+
+        return progress_update
+
+    async def _handle_user_message(self, request: WSInput) -> WSOutput:
+        """
+        Handle a user message by sending it to the chat assistant and processing the response.
+
+        Args:
+            user_message (str): The user's message to be processed.
+            websocket (str): Unique identifier of the client.
+
+        Returns:
+            WSOutput: response to be sent back to the AI Core Interface Layer.
+        """
+        user_message = request.message
+
+        # Generate AI response for the user message
+        ai_response, messages = await self.chat_assistant.generate_ai_response(
+            user_message=user_message
+        )
+        logger.info(f"AI response: {ai_response}")
+
+        # Construct a response to be sent by the AI Core Interface Layer to the Front End
+        response = WSOutput(
+            command=Command.MESSAGE_FOR_HUMAN,
+            message=ai_response,  # AI-generated response to be displayed to the user
+            working=False,  # Indicates that the response is ready
+        )
+        return response
+
+    async def _handle_user_request_update_profile(self, request: WSInput) -> None:
+        """
+        Handle the 'user_request_update_profile' command by retrieving user information from the database, creating a chat where the user might night give us new information about this profile.
+
+        Returns:
+            None.
+        """
+        logger.info("Starting a spin-off story generation.")
+
+        self.knowledge_base_files = (
+            await self._fetch_user_data_and_create_knowledge_base()
+        )
+
+        # self._reset()
+        # await self._process_step(StoryState.USER_FACING_CHAT)
+
+    async def _handle_spin_off_tale(self, request: WSInput) -> None:
+        """
+        Handle the 'spin_off' command by retrieving user information from the database.
+
+        Returns:
+            None.
+        """
+        logger.info("Starting a spin-off story generation.")
+
+        self.knowledge_base_files = (
+            await self._fetch_user_data_and_create_knowledge_base()
+        )
+
+        # self._reset()
+        # await self._process_step(StoryState.USER_FACING_CHAT)
+
+    async def _handle_new_tale(self, request: WSInput) -> None:
+        """
+        Handle the 'new-tale' command by retrieving user information from the database.
+
+        Returns:
+            None.
+        """
+        logger.info("Starting story generation from scratch.")
+
+        self.knowledge_base_files = (
+            await self._fetch_user_data_and_create_knowledge_base()
+        )
+
+        self._reset()
+        await self._process_step(StoryState.USER_FACING_CHAT)
+
+    async def _fetch_user_data_and_create_knowledge_base(self) -> List[str]:
+        """
+        Retrieves user data from the database and creates a knowledge base file.
+
+        Returns:
+            List[str]: List of file paths to the created knowledge base files.
+        """
+        if self.user_id is None:
+            return None
+
+        # Retrieve user data from the database
+        user_info, profiles, stories = await self._query_user_data()
+        self.current_knowledge_base = {
+            "user_info": user_info,
+            "profiles": profiles,
+            "stories": stories,
+        }
+
+        file_paths = await convert_user_info_to_json_files(
+            self.current_knowledge_base,
+            self.config.output_artifacts.knowledge_base_root_dir,
+        )
+        return file_paths
+
+    async def _query_user_data(self) -> Tuple[Dict, List[Dict], List[Dict]]:
+        """
+        Queries the database asynchronously for user information, profiles, and stories
+        using SQLAlchemy.
+
+        Returns:
+            Tuple[Dict, List[Dict], List[Dict]]: A tuple containing user information,
+            profiles, and stories.
+        """
+        user_info = {}
+        profiles = []
+        stories = []
+
+        # Fetch user information
+        user = await self.get_user_by_id(self.user_id)
+        if user:
+            user_info = {
+                "user_id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "created_at": user.created_at,
+            }
+
+        # Fetch profiles associated with the user
+        profile_rows = await self.session.execute(
+            select(Profile).where(Profile.user_id == self.user_id)
+        )
+        profile_rows = profile_rows.scalars().all()
+        for profile in profile_rows:
+            profiles.append({"profile_id": profile.id, "details": profile.details})
+
+        # Fetch stories associated with the user
+        stories_rows = await self.get_stories_by_user_id(self.user_id)
+        for story in stories_rows:
+            stories.append(
+                {
+                    "story_id": story.id,
+                    "title": story.title,
+                    "features": story.features,
+                    "synopsis": story.synopsis,
+                    "created_at": story.created_at,
+                }
+            )
+
+        return user_info, profiles, stories
+
+    def _should_resume(self) -> bool:
+        """
+        Determines if the story generation process should resume from the last saved state.
+
+        Returns:
+            bool: True if the story should be resumed, False otherwise.
+        """
+        self.latest_story_dir = get_latest_story_directory(
+            self.config.output_artifacts.stories_root_dir
+        )
+        return (
+            self.config.output_artifacts.continue_where_we_left_of
+            and self.latest_story_dir is not None
+        )
+
+    async def _resume_story(self) -> None:
+        """
+        Resumes the story generation process from the last saved state.
+        """
+        logger.info("Attempting to resume story generation from the last saved state.")
+        latest_story_dir = get_latest_story_directory(
+            self.config.output_artifacts.stories_root_dir
+        )
+
+        self.story_data = StoryData.load_state(directory=latest_story_dir)
+        if self.story_data:
+            last_step = self.story_data.metadata.get(
+                "step", StoryState.USER_FACING_CHAT
+            )
+            if last_step is StoryState.FINAL_DOCUMENT_GENERATED:
+                logger.info(f"Last story was completed. We will create a new story.")
+                await self._start_new_story()
+            else:
+                logger.info(f"Resuming story generation from step: {last_step}")
+            await self._process_step(last_step)
+        else:
+            logger.info("No saved state found, starting a new story.")
+            await self._start_new_story()
+
+    async def _process_step(self, current_step: StoryState, **kwargs) -> None:
+        """
+        Processes a given step and moves to the next step in the story generation process.
+
+        Args:
+            current_step (StoryState): The current step to be processed.
+        """
+        while current_step is not StoryState.FINAL_DOCUMENT_GENERATED:
+            method_name = self.steps_execution_mapping.get(current_step)
+            if method_name and hasattr(self, method_name):
+                try:
+                    await getattr(self, method_name)(**kwargs)
+
+                    # Move to the next step
+                    current_step = StoryState(current_step.value + 1)
+                    self._update_and_serialize_step(current_step)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to execute step {method_name}: {traceback.format_exc()}"
+                    )
+                    break
+            else:
+                logger.error(f"No method found for step {current_step}")
+                break
+
+        if current_step is StoryState.FINAL_DOCUMENT_GENERATED:
+            logger.info("Story generation process completed.")
+
+    def _reset(self) -> None:
+        """
+        Reset the variables for a fresh run.
+
+        This method sets all internal state variables to their initial values.
+        """
+        try:
+            # Resetting the StoryData object to its initial state
+            self.story_data = StoryData()
+            self.story_data.story_folder = create_new_story_directory(
+                stories_root_dir=self.config.output_artifacts.stories_root_dir,
+                subfolders=self.subfolders,
+            )
+            self.story_data.images_subfolder = self.subfolders["images"]
+            # Log the reset action
+            logger.info("State has been successfully reset for a fresh run.")
+
+        except Exception as e:
+            logger.error(
+                f"An error occurred while resetting the state: {traceback.format_exc()}"
+            )
+
+    def _update_and_serialize_step(self, step: StoryState) -> None:
+        self.story_data.metadata["step"] = step
+        self.story_data.save_state()
+        logger.info(f"Saved step: {step}")
+
+    async def _user_facing_chat(self) -> None:
+        """
+        Start and run the WebSocket server to gather user information through a chat with the GUI.
+
+        This method handles the user-facing chat phase, processes the completed chat,
+        extracts story elements, and updates the database and knowledge base accordingly.
+        """
+        logger.info("Starting User-Facing chat Phase")
+        self.chat_assistant = ChatAssistant(
+            config=self.config.chat_assistant,
+            command_handler=self.handle_assistant_requests,
+        )
+        await self.chat_assistant.start_assistant(files_paths=self.knowledge_base_files)
+
+        # We should generate a starting message for the user:
+        if self.knowledge_base_files:
+            # We have a knowledge base, so we can generate a starting message to give contest to the LLM assistant
+            message = """
+            I'm very excited to start writing a story for a special person. 
+            I've attached all the files that tell you all about myself, my profiles (i.e. the targets of my stories), and the stories themselves so you can have a full context of me and my previous work with you.
+            If I have only 1 profile, then, it's obvious that the story is either targeted for this person or I might want to create a new profile alltogether.
+            """
+        else:
+            # We don't have a knowledge base, so we this is a brand new client we need to focus on the best possible experiense
+            message = """
+            I'm totaly new to this but I'm very excited to start writing a story for a special person. 
+            I really hope you can make this experience the very best possible and as easy as possible for me.
+            """
+        request = WSInput(Command.USER_MESSAGE, message)
+        ai_response = await self._handle_user_message(request)
+        # Send the response to the AI Core Interface Layer to be sent to the Front End
+        await self.send_message_to_frontend(ai_response)
+
+        # Wait for chat to complete
+        await self.chat_assistant.wait_for_chat_completion()
+
+        # Process the completed chat
+        await self.on_chat_completed(self.chat_assistant.messages)
+
+    async def handle_assistant_requests(self, ai_message_for_system: dict):
+        """
+        Processes the Chat AI Assistant message.
+        """
+        logger.info(
+            f"Processing AI message for Magic-Tales Orchestrator: {ai_message_for_system}"
+        )
+        if Command.CHAT_COMPLETED in ai_message_for_system:
+            self.chat_assistant.chat_completed_event.set()
+            logger.info("Chat completed.")
+            return
+
+        if not isinstance(ai_message_for_system, dict):
+            logger.info(
+                f"AI message for Magic-Tales Orchestrator is not a dict: {ai_message_for_system}"
+            )
+            return
+
+        command = ai_message_for_system.get("command", "")
+
+        if command == "update_profile_DB":
+            await self.update_profile(ai_message_for_system)
+        elif command == "new_profile_DB":
+            await self._db_create_profile(ai_message_for_system)
+
+    # ---------------------------------------------- DB Post methods -------------------------------------------------
+
+    async def _db_create_profile(self, ai_message_for_system: dict):
+
+        profile_details = ai_message_for_system["details"]
+
+        new_profile = Profile(
+            user_id=self.user_id,
+            user=await self.get_user_by_id(self.user_id),
+            details=profile_details,
+        )
+        self.session.add(new_profile)
+        self.session.commit()
+
+        return new_profile
+
+    async def _db_create_story(self, data: Story):
+        instance = Story(
+            profile_id=data.profile_id,
+            session_id=data.session_id,
+            title=data.title,
+            synopsis=data.synopsis,
+            last_successful_step=data.last_successful_step,
+        )
+        self.session.add(instance)
+        self.session.commit()
+        data.id = instance.id
+
+        return data
+
+    async def _db_add_message_to_session(self, data: Message):
+        instance = Message(
+            user_id=data.user_id,
+            session_id=data.session_id,
+            origin=data.origin,
+            type=data.type,
+            command=data.command,
+            details=data.details,
+        )
+        self.session.add(instance)
+        self.session.commit()
+        data.id = instance.id
+        # data.user = await self.get_user_by_id(data.user_id)
+
+        return data
+
+    async def _db_delete_messages_by_session_id(self, session_id):  # (NOT USED)
+        query = Message.__table__.delete().where(Message.session_id == session_id)
+        self.session.execute(query)
+        self.session.commit()
+
+    # ---------------------------------------------- End DB post methods ---------------------------------------------
+
+    # ---------------------------------------------- DB Update methods -----------------------------------------------
+
+    async def _db_update_profile_by_id(self, profile_id: str, data: Profile):
+        profile = self.get_profile_by_id(profile_id)
+        profile.details = data.details
+        self.session.update(profile)
+        self.session.commit()
+
+        return profile
+
+    async def _db_link_user_with_conversations(self, session_ids):
+        query = (
+            Message.__table__.update()
+            .where(Message.session_id.in_(session_ids))
+            .values(user_id=self.user_id)
+        )
+        self.session.execute(query)
+        self.session.commit()
+
+    # ---------------------------------------------- End update methods -------------------------------------------
+
+    async def update_profile(self, ai_message_for_system: dict):
+        """
+        Updates a profile based on the AI system message.
+
+        Args:
+            ai_message_for_system (dict): The message from the AI system with update details.
+        """
+        profile_id = ai_message_for_system.get("profile_id")
+        updates = ai_message_for_system.get("updates", {}).get("details")
+
+        # Fetch existing profile details
+        current_profile = await self.get_profile_by_id(profile_id)
+        existing_details = current_profile.details if current_profile else ""
+
+        # Merge updates using the Information Extractor Assistant
+        merged_details = await self.merge_profile_updates(existing_details, updates)
+
+        # Update the profile in the database
+        updated_profile = Profile(
+            user_id=self.user_id,
+            user=await self.get_user_by_id(self.user_id),
+            details=merged_details,
+        )
+        await self._db_update_profile_by_id(profile_id, updated_profile)
+
+        # Update the knowledge base files
+        self.current_knowledge_base["profiles"] = merged_details
+        file_paths = await self._fetch_user_data_and_create_knowledge_base()
+        await self.chat_assistant.update_assistant(file_paths)
+
+    async def merge_profile_updates(self, existing_details: str, updates: str):
+        """
+        Merges updates into the existing profile details using the Information Extractor.
+
+        Args:
+            existing_details (str): The current details of the profile in JSON format.
+            updates (str): The updates to the profile in JSON format.
+
+        Returns:
+            str: The merged profile details in JSON format.
+        """
+        # Assuming `self.info_extractor.extract_info` exists and operates as described.
+        # Convert existing details and updates into a format suitable for the extractor.
+        chat_string = (
+            f"Existing details: {existing_details}\nUpdates: {updates}\n"
+            f"Integrate these updates into the existing details."
+        )
+
+        # Use the Information Extractor to merge the details.
+        merged_details = await self.info_extractor.extract_info(chat_string)
+        return merged_details
+
+    async def on_chat_completed(self, messages: List[Dict]) -> None:
+        """
+        Callback for handling the completion of the user-facing chat.
+
+        Args:
+            messages (List[Dict]): List of chat messages with user interactions.
+
+        This method processes the chat messages, extracts relevant story elements,
+        and updates the database and knowledge base.
+        """
+        logger.info("User-Facing chat complete. Processing chat messages.")
+
+        chat_string = await self._convert_chat_to_string(messages)
+        updated_elements = await self._extract_chat_key_elements(chat_string)
+        await self._update_database_from_chat_key_elements(updated_elements)
+
+    async def _convert_chat_to_string(self, messages: List[Dict]) -> str:
+        """
+        Converts a list of chat messages into a single concatenated string.
+
+        Args:
+            messages (List[Dict]): The list of chat messages. Each message is a dictionary containing the role and content.
+
+        Returns:
+            str: A concatenated string of all chat messages.
+
+        This method facilitates the processing of chat messages for further analysis.
+        """
+        return "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+
+    async def _extract_chat_key_elements(
+        self, chat_string: str
+    ) -> Dict:
+        """
+        Asynchronously extracts key story elements from the chat string.
+
+        Parameters:
+        - chat_string (str): The concatenated chat messages as a single string.
+
+        Returns:
+        - Dict: A dictionary containing the extracted elements with keys 'personality_profile',
+          'story_features', and 'story_synopsis'.
+        """
+        chat_key_elements = {
+            "personality_profile": self.info_extractor.extract_info(
+                f"Make a detailed list of all related features of the individual we want to write a story for from this conversation:\n{chat_string}"
+            ),
+            "story_features": self.info_extractor.extract_info(
+                f"Make a detailed list of all related story features we want to write from this conversation:\n{chat_string}"
+            ),
+            "story_synopsis": self.info_extractor.extract_info(
+                f"Extract the latest agreed upon story synopsis from this conversation:\n{chat_string}"
+            ),
+        }
+
+        results = await asyncio.gather(*chat_key_elements.values())
+        return {key: result for key, result in zip(chat_key_elements.keys(), results)}
+
+    async def _update_database_from_chat_key_elements(
+        self, updates: Dict):
+        """
+        Updates the database with the provided updates and refreshes the knowledge base.
+
+        Parameters:
+        - updates: Dict[str, str, str] - The updates to apply, keyed by the type of update
+          ('personality_profile', 'story_features', 'story_synopsis') and containing the new values.
+        """
+        # if "profile" in updates:
+        #     profile_details = updates["profile"]
+        #     new_profile = Profile(
+        #         user_id=self.user_id,
+        #         user=await self.get_user_by_id(self.user_id),
+        #         details=profile_details,
+        #     )
+        #     await self._db_update_profile_by_id(
+        #         profile_id=profile_update["id"], data=new_profile
+        #     )
+
+        # if "story" in updates:
+        #     story_update = updates["story"]
+        #     await self._db_update_story_by_id(
+        #         story_update["id"], {"synopsis": story_update["synopsis"]}
+        #     )
+
+        logger.info("Database and knowledge base updated with new story elements.")
+
+    async def _generate_story_title(self) -> None:
+        """Generate a title for the story based on the user input."""
+        logger.info(f"Generating a title for the story")
+        message = f"Given the following three pieces of information:\n\n1) Personality profile: {self.story_data.personality_profile}.\n\n2) Story main features: {self.story_data.story_features}.\n\n3) Story Synopsis: {self.story_data.synopsis}.\n\nThe best possible title for the story is:"
+        self.story_data.title = await self.info_extractor.extract_info(message)
+        logger.info(f"Title: {self.story_data.title}")
+
+        update = self.create_progress_update(
+            story_state=StoryState.STORY_TITLE_GENERATION,
+            status=ResponseStatus.STARTED,
+            progress_percent=0,
+            message="",
+        )
+        await self.send_message_to_frontend(update)
+
+        return
+
+    async def _generate_chapter_title(self, chapter: str) -> str:
+        """Generate a title for specific Chapter"""
+        logger.info(f"Generating a title for the Chapter")
+        message = f"Given the following piece of information:\n\n1) Chapter: {chapter}.\n\nThe best possible title for this chapter is:"
+        chapter_title = await self.info_extractor.extract_info(message)
+        logger.info(f"Chapter Title: {chapter_title}")
+        return chapter_title
+
+    async def _generate_story(self) -> None:
+        """
+        Generate a story based on the provided inputs.
+
+        Generates:
+            List[Dict[str, str]]: A list of dictionaries, each containing the chapter title and content.
+
+        Resturns:
+            None
+        """
+
+        # Initialize a list to hold the chapters
+        chapters = []
+
+        # Step 1: Determine Chapter Count
+        # TODO: Make this chapter count more robust
+        num_chapters = await self._determine_chapter_count(
+            self.story_data.story_features
+        )
+        num_chapters = max(1, num_chapters)
+        logger.info(f"Number of chapters: {num_chapters}")
+
+        # Step 2: Initialize chapter content
+        previous_chapter_content = ""
+
+        # Step 3: Chapter Generation
+        chapters_folder = os.path.join(
+            self.story_data.story_folder, self.subfolders["chapters"]
+        )
+        for chapter_number in range(1, num_chapters + 1):
+            message = f"Generating chapter: {chapter_number} of {num_chapters}"
+            logger.info(message)
+
+            update = self.create_progress_update(
+                story_state=StoryState.STORY_GENERATION,
+                status=ResponseStatus.STARTED,
+                progress_percent=(chapter_number / num_chapters) * 100,
+                message=message,
+            )
+            await self.send_message_to_frontend(update)
+
+            chapter_title, chapter_content = await self._generate_chapter(
+                chapters_folder=chapters_folder,
+                chapter_number=chapter_number,
+                total_number_chapters=num_chapters,
+                previous_chapter_content=previous_chapter_content,
+            )
+            # Add the generated chapter to the chapters list
+            chapters.append({"title": chapter_title, "content": chapter_content})
+            previous_chapter_content = chapter_content
+
+        self.story_data.chapters = chapters
+        return
+
+    async def _determine_chapter_count(self, story_features: str) -> Union[int, None]:
+        """
+        Determine the number of chapters in the story based on given story features.
+
+        Args:
+            story_features (str): The features of the story.
+
+        Returns:
+            int: The determined number of chapters. Returns None if unable to determine.
+        """
+        logger.info("Determining the number of chapters in the story.")
+
+        # Request the number of chapters from the agent
+        message = f"Given the following information:\n\nStory main features: {story_features}.\n\nPlease,infer the number of chapters of the story we want to create. Respond just with a numerical value. For example: 1, 5, 10... If unknown, default to 1"
+        response = await self.info_extractor.extract_info(message)
+        logger.info(f"{response}")
+
+        # try to extract numerical values
+        try:
+            return int(response)
+        except ValueError:
+            pass
+
+        # First, try to extract numerical values
+        match = re.search(r"The number of chapters should be (\d+)", response)
+        if match:
+            return int(match.group(1))
+
+        # Second, try to convert spelled-out numbers to integers
+        match = re.search(r"The number of chapters should be ([a-zA-Z]+)", response)
+        if match:
+            try:
+                return w2n.word_to_num(match.group(1))
+            except ValueError:
+                pass
+
+        # Third, try to handle a range (e.g., "between 5 to 7") and take the lower limit
+        match = re.search(r"between (\d+) to (\d+)", response)
+        if match:
+            return int(match.group(1))
+
+        # Third, try to handle a range (e.g., "between 5 to 7") and take the lower limit
+        match = re.search(r"between (\d+) and (\d+)", response)
+        if match:
+            return int(match.group(1))
+
+        # If no suitable format found, default to None (or 1, depending on your preference)
+        logger.warning("Unable to determine the number of chapters. Defaulting to 1.")
+        return 1
+
+    async def _generate_chapter(
+        self,
+        chapters_folder: str,
+        chapter_number: int,
+        total_number_chapters: int,
+        previous_chapter_content: str,
+    ) -> tuple:
+        """
+        Generate a single chapter of the story.
+
+        Args:
+            chapter_number (int): The index of the chapter to generate.
+            total_number_chapters (int): The total number of chapters in the story.
+            previous_chapter_content (str): The latest chapter of the story.
+
+        Returns:
+            tuple: The generated chapter title and content.
+        """
+        self.chapter_generation_mechanism = ChapterGenerationMechanism(
+            config=self.config,
+            story_data=self.story_data,
+            previous_chapter_content=previous_chapter_content,
+        )
+        best_chapter = self.chapter_generation_mechanism.create_chapter(
+            chapters_folder=chapters_folder,
+            chapter_number=chapter_number,
+            total_number_chapters=total_number_chapters,
+        )
+        chapter_content = best_chapter.get("chapter_generator_response_dict", {}).get(
+            "content", ""
+        )
+        if chapter_content == "":
+            raise Exception("Failed to generate a chapter. Please try again.")
+
+        # Extract the chapter title
+        chapter_title = await self._generate_chapter_title(chapter_content)
+        logger.info(f"Chapter {chapter_number}: {chapter_title}")
+        logger.info(f"{chapter_content}")
+
+        return chapter_title, chapter_content
+
+    async def _generate_image_prompts(self) -> None:
+        """Generate image prompts for all chapters in the story."""
+        message = f"Generating image prompts for all chapters."
+        logger.info(message)
+        update = self.create_progress_update(
+            story_state=StoryState.IMAGE_PROMPT_GENERATION,
+            status=ResponseStatus.STARTED,
+            progress_percent=0,
+            message=message,
+        )
+        await self.send_message_to_frontend(update)
+        image_prompt_generation_mechanism = ImagePromptGenerationMechanism(
+            config=self.config
+        )
+        all_chapter_prompts_and_new_chapters_annotated = (
+            image_prompt_generation_mechanism.generate_image_prompts_for_all_chapters(
+                chapters=self.story_data.chapters
+            )
+        )
+        await self._extract_post_processed_chapters(
+            all_chapter_prompts_and_new_chapters_annotated
+        )
+        logger.info(
+            f"Image Prompts + processed chapters created"
+        )  # {self.story_data.image_prompts}")
+
+    async def _extract_post_processed_chapters(
+        self, all_chapter_prompts: Dict[int, Dict[str, Any]]
+    ) -> None:
+        """
+        Save the post-processed chapters, which include image annotations, into the StoryData structure.
+
+        Args:
+            all_chapter_prompts: A dictionary containing image prompt data for each chapter.
+
+        Returns:
+            None
+        """
+        post_processed_chapters = []
+        image_prompt_messages = []
+        image_prompts = []
+
+        for chapter_number, chapter_data in all_chapter_prompts.items():
+            chapter_title = chapter_data.get("title", f"Chapter {chapter_number + 1}")
+            chapter_content = chapter_data["image_prompt_data"][
+                "image_prompt_response_content_dict"
+            ]["annotated_chapter"]
+            image_prompt = chapter_data["image_prompt_data"][
+                "image_prompt_response_content_dict"
+            ]["image_prompts"]
+            prompt_messages = chapter_data["image_prompt_data"][
+                "image_prompt_generator_prompt_messages"
+            ]
+
+            post_processed_chapters.append(
+                {"title": chapter_title, "content": chapter_content}
+            )
+
+            image_prompts.append(image_prompt)
+            image_prompt_messages.append(
+                {
+                    "system_message": prompt_messages[0].content,
+                    "human_message": prompt_messages[1].content,
+                }
+            )
+
+        # Save the post-processed chapters to the StoryData structure.
+        self.story_data.post_processed_chapters = post_processed_chapters
+        self.story_data.image_prompt_generator_prompt_messages = image_prompt_messages
+        self.story_data.image_prompts = image_prompts
+
+    async def _generate_images(self) -> List[str]:
+        """
+        Generate images based on provided image prompts for all chapters and save them to a specified directory.
+
+        Returns:
+            A list of filenames for the generated images.
+
+        Raises:
+            Exception: If any error occurs during the image generation process.
+        """
+        logger.info("Initiating image generation process.")
+
+        all_chapter_prompts = self.story_data.image_prompts
+        story_directory = self.story_data.story_folder
+
+        # Create a subdirectory for images within the specified story directory
+        image_directory = os.path.join(story_directory, self.subfolders["images"])
+        os.makedirs(image_directory, exist_ok=True)
+
+        # Initialize image generator with the provided configuration
+        # image_generator = instantiate(self.config.image_generator)
+        image_generator = DALLE3ImageGenerator(self.config.image_generator)
+
+        # Initialize list to store filenames of generated images
+        image_filenames = []
+
+        # Flatten list of lists and keep track of chapter numbers
+        flat_image_prompts = [
+            (chapter_number, image_prompt, image_prompt_index)
+            for chapter_number, chapter_prompts in enumerate(all_chapter_prompts, 1)
+            for image_prompt_index, image_prompt in enumerate(chapter_prompts)
+        ]
+
+        for chapter_number, image_prompt, image_prompt_index in flat_image_prompts:
+            filename = f"Chapter_{chapter_number}_Image_{image_prompt_index}.png"
+            message = f"Generating image for Chapter {chapter_number}, Image {image_prompt_index}"
+            logger.info(message)
+            update = self.create_progress_update(
+                story_state=StoryState.IMAGE_GENERATION,
+                status=ResponseStatus.STARTED,
+                progress_percent=0,
+                message=message,
+            )
+            await self.send_message_to_frontend(update)
+            try:
+                generated_image_path = image_generator.generate_images(
+                    [image_prompt], image_directory
+                )
+
+                if generated_image_path:
+                    os.rename(
+                        generated_image_path[0], os.path.join(image_directory, filename)
+                    )
+                    image_filenames.append(filename)
+                else:
+                    message = f"Failed to generate image for Chapter {chapter_number}, Image {image_prompt_index}. Skipping."
+                    logger.error(message)
+                    update = self.create_progress_update(
+                        story_state=StoryState.IMAGE_GENERATION,
+                        status=ResponseStatus.STARTED,
+                        progress_percent=0,
+                        message=message,
+                    )
+                    await self.send_message_to_frontend(update)
+            except Exception as e:
+                message = f"An error occurred while processing Chapter {chapter_number}, Image {image_prompt_index}."
+                logger.error(f"{message}. Details:\n{traceback.format_exc()}")
+                update = self.create_progress_update(
+                    story_state=StoryState.IMAGE_GENERATION,
+                    status=ResponseStatus.FAILED,
+                    progress_percent=0,
+                    message=message,
+                )
+                await self.send_message_to_frontend(update)
+                continue
+
+        logger.info(f"Successfully generated image files: {image_filenames}")
+        return image_filenames
+
+    async def _filter_chat_info(
+        self, chat_assistant_info: List[Tuple[str, int]], info_to_extract: int
+    ) -> str:
+        """
+        Filters and creates a str of the chat information based on the specified info type.
+
+        Args:
+            chat_assistant_info (List[Tuple[str, int]]): A list of messages generated by the "user_facing_assistant".
+                Each tuple consists of a message (str) and its associated data bucket type (int).
+            info_to_extract (int): The information type to extract and summarize.
+                1: Personality Profile, 2: Story Features, 3: Story Synopsis
+
+        Returns:
+            str: A string of the filtered messages.
+        """
+
+        # Filter messages by the specified info type
+        filtered_messages = [
+            message
+            for message, data_type in chat_assistant_info
+            if data_type == info_to_extract
+        ]
+
+        # Create a str of the filtered messages
+        return "\n".join(filtered_messages)
+
+    async def _generate_final_document(self) -> None:
+        """Creates the final story document with associated images and saves it to the specified directory."""
+        message = f"Generating the final story document."
+        logger.info(message)
+        update = self.create_progress_update(
+            story_state=StoryState.DOCUMENT_GENERATION,
+            status=ResponseStatus.STARTED,
+            progress_percent=0,
+            message=message,
+        )
+        await self.send_message_to_frontend(update)
+
+        story_document = StoryDocument(story_data=self.story_data)
+        story_document.create_document()
+        filepath = story_document.save_document(f"story.docx")
+        logger.info(f"Story document saved in: {filepath}")
+
+        message = f"Story generation completed. Hope you enjoy it!"
+        logger.info(message)
+        update = self.create_progress_update(
+            story_state=StoryState.DOCUMENT_GENERATION,
+            status=ResponseStatus.STARTED,
+            progress_percent=0,
+            message=message,
+        )
+        await self.send_message_to_frontend(update)

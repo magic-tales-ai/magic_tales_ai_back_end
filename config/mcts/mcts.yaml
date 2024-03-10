@@ -1,0 +1,16 @@
+max_num_creation_cycles: 3
+pb_c_base: 1.25
+pb_c_init: 1.25
+node_prior: "uniform"
+pw_alpha: 0.5
+use_greedy_node_selection: True
+update_method: "max_performance"
+update_method_params: {}
+quality_score_threshold: 9.0
+depth_limit_for_performance: 2
+regrow_threshold_quality_score: 8.0
+additional_root_children: 2
+name_for_this_creation_run: "Chapter_Gen"
+override_root_with:
+continue_from_last_creation_session: False
+seed_value: 77

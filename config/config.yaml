@@ -1,0 +1,19 @@
+defaults:  
+  - _self_
+  - chapter_scoring: chapter_scoring  
+  - image_generator: dalle3 
+  - info_extractor: info_extractor
+  - main_llm: main_llm
+  - mcts: mcts
+  - output_artifacts: output_artifacts
+  - parser_llm: parser_llm  
+  - chat_assistant: chat_assistant
+  - chat_ui: chat_ui
+  - synthesizer: azure_synthesizer
+  - database: database
+  - embeddings: embeddings
+  - ai_core_websocket_server: ai_core_websocket_server
+
+hydra:
+  run:
+    dir: .

@@ -1,0 +1,14 @@
+### General Context ###
+You are generating chapter {chapter_number} in a total of {total_num_chapters} chapters. Take this into account for general context.
+
+### Previous Version ###
+Current chapter's previous version from the last improvement iteration (the first time we attempt to create a chapter this will be empty):
+{current_chapter_previous_version}
+
+### Story Information & Instructions ###
+General Story information:
+{story_data}
+
+### Previous Chapter ###
+Previous Chapter in the Story for context and storyline alignment:
+{previous_chapter}

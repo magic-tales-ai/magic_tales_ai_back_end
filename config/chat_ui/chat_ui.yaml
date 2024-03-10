@@ -1,0 +1,12 @@
+#Mockup of the chat UI configuration file
+
+# Name of the environment variable that stores the OpenAI API key, exclusively for ChatUI
+chat_ui_openai_key_env_var: "CHAT_UI_OPENAI_API_KEY"
+
+image_path: "magic_tales/chat_ui/images/SmartyTale.png"
+icon_path: "https://a.slack-edge.com/production-standard-emoji-assets/14.0/google-large/1f9e0@2x.png"
+
+standard_number_of_retries: 3
+
+retry_interval: 5  # seconds to wait before retrying websocket connection
+max_retries: 5  # maximum number of retries

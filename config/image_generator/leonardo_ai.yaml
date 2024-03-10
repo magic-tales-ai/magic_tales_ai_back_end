@@ -1,0 +1,40 @@
+_target_: magic_tales.image_generators.leonardo_ai.LeonardoAiImageGenerator
+config:
+  api_key: "c91677ba-3298-4f72-8b3b-c4778714a6c9" 
+  alchemy: True
+  contrast_ratio: 0.5
+  control_net: False
+  control_net_type: 'DEPTH'
+  expanded_domain: False
+  guidance_scale: 8
+  height: 832
+  high_contrast: False
+  high_resolution: False
+  image_prompt_weight: None
+  image_prompts: None
+  init_generation_image_id: None
+  init_image_id: None
+  init_strength: None
+  model_id: 'd69c8273-6b17-4a30-a13e-d6637ae1c644'
+  negative_prompt: None
+  nsfw: False
+  num_images: 1
+  num_inference_steps: 50
+  preset_style: 'ILLUSTRATION'  
+  prompt_magic: True
+  prompt_magic_version: 'v3'
+  public: False
+  scheduler: 'DDIM'
+  sd_version: None
+  seed: 870013
+  tiling: False
+  unzoom: False
+  unzoom_amount: 0.0
+  upscale_ratio: 0.0
+  weighting: 0.5
+  width: 640
+
+  max_retries: 10
+  wait_time_secs: 5
+  base_url: "https://cloud.leonardo.ai/api/rest/v1/generations/"
+  batch_mode: True

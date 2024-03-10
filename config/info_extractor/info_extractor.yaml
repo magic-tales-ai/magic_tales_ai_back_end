@@ -1,0 +1,2 @@
+model: "gpt-4-1106-preview"
+instructions_path: "magic_tales/info_extractor/information_extractor_assistant_instructions.txt"

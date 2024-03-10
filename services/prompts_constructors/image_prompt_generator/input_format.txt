@@ -1,0 +1,5 @@
+### Chapter Number ###
+{chapter_number}
+
+### Chapter content ###
+{chapter_content}

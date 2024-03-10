@@ -1,0 +1,3 @@
+model: "gpt-4-1106-preview"
+instructions_path: "magic_tales/chat_assistant/chat_assistant_instructions.txt"
+files_path: "magic_tales/chat_assistant/chat_assistant_files"

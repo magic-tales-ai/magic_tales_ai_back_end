@@ -1,0 +1,7 @@
+_target_: magic_tales.turn_based_conversation.synthesizer.azure_synthesizer.AzureSynthesizer
+config:
+  sampling_rate: 22050
+  voice_name: "en-US-JennyNeural"
+  pitch: 0
+  rate: 14
+  default_on: False

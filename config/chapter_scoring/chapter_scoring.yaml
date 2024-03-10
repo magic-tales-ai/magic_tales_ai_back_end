@@ -1,0 +1,12 @@
+weight_plot_consistency_score: 1.00
+weight_character_development_score: 1.00
+weight_engagement_score: 1.00
+weight_clarity_score: 1.00
+weight_detailing_score: 1.00
+weight_language_quality_score: 1.00
+weight_dialogue_score: 1.00
+weight_emotional_impact_score: 1.00
+weight_originality_score: 1.00
+weight_closure_score: 1.00
+weight_alignment_with_previous_chapter_score: 1.00
+weight_general_alignment_with_story_score: 1.00

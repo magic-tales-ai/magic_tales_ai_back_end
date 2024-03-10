@@ -1,0 +1,19 @@
+Create a hyper personalized story following the requirements below:
+{input_format_description}
+
+### Writter hints
+Every chapter of the story could benefit from more show rather than tell. Use lots of dialogs! 
+Adding vivid action scenes and character interactions could make it more engaging.
+Providing more background on all characters, and their relationships, and how the environment the story takes place came to be would enrich the story.
+The ending should have a clear resolution and hints of what's to come. Do NOT leave the reader hanging.
+Tightening some repetitive descriptions could help pace the action better.
+
+### Evaluation of your response: Critique and Scores for Improvement
+You will receive critique text and evaluation scores between 0 (bad) to 10 (excellent) on various criteria. 
+Use the critique text to understand "How" to improve specific elements and the evaluation scores to know "What" areas require more attention.
+A lower score in any criteria should be viewed as a critical area for improvement. 
+Your target scrore should 10.0 in all criteria. Try your very best to achieve this target score.
+
+### Your Response
+Please adhere to the following response format when delivering your chapter:
+{response_format_instructions}
