@@ -2,7 +2,8 @@ class Command:
     # COMMANDS from USER to CORE-AI
     NEW_TALE = "new_tale"
     SPIN_OFF = "spin_off"
-    USER_REQUEST_UPDATE_PROFILE = "user_req_update_profile"
+    UPDATE_PROFILE = "update_profile"
+    NEW_PROFILE = "new_profile"
     CONVERSATION_RECOVERY = "conversation_recovery"
     LINK_USER_WITH_CONVERSATIONS = "link_user_with_conversations"
     USER_MESSAGE = "user_message"

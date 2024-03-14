@@ -1,3 +1,4 @@
-model: "gpt-4-1106-preview"
-instructions_path: "magic_tales/chat_assistant/chat_assistant_instructions.txt"
-files_path: "magic_tales/chat_assistant/chat_assistant_files"
+model: "gpt-4-turbo-preview"
+instructions_path: "services/chat_assistant/chat_assistant_instructions.txt"
+instructions_tryout_path: "services/chat_assistant/chat_assistant_instructions_tryout.txt"
+files_path: "services/chat_assistant/chat_assistant_files"

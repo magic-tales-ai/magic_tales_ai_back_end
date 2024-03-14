@@ -10,7 +10,7 @@ from langchain.output_parsers import (
 
 from services.utils.file_utils import load_text
 
-PROMPTS_PATH = os.path.join(os.getcwd(), "magic_tales/prompts_constructors")
+PROMPTS_PATH = os.path.join(os.getcwd(), "services/prompts_constructors")
 
 
 def load_prompt(prompt: str, package_path: str = PROMPTS_PATH) -> str:

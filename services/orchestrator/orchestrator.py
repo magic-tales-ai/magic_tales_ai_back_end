@@ -8,8 +8,11 @@ from omegaconf import DictConfig
 from hydra import initialize, compose
 from hydra.utils import instantiate
 import traceback
-from sqlalchemy import desc, select
-from sqlalchemy.orm import Session
+from sqlalchemy import desc, select, delete, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
+from openai.types.beta.threads import MessageContentText
+from enum import Enum
 
 
 import logging
@@ -20,7 +23,7 @@ from fastapi import WebSocket
 nest_asyncio.apply()
 
 from services.chat_assistant.chat_assistant import ChatAssistant
-from services.MessageSender import MessageSender
+from services.message_sender import MessageSender
 from services.info_extractor.info_extractor import InfoExtractor
 from services.utils.file_utils import (
     create_new_story_directory,
@@ -37,18 +40,17 @@ from services.image_prompt_generator.image_prompt_generation_mechanism import (
 )
 from services.image_generators.dalle3 import DALLE3ImageGenerator
 from services.utils.log_utils import get_logger
-from services.SessionService import refresh_access_token
+from services.session_service import refresh_access_token
 
 from data_structures.story_state import StoryState
 from data_structures.story import Story, StoryData, StorySchema
 from data_structures.command import Command
 from data_structures.response import ResponseStatus
-from data_structures.message import Message, OriginEnum, TypeEnum
+from data_structures.message import Message, MessageSchema, OriginEnum, TypeEnum
 from data_structures.profile import Profile
 from data_structures.user import User
 from data_structures.ws_input import WSInput
 from data_structures.ws_output import WSOutput
-from data_structures.message import MessageSchema
 
 
 # Set up logging
@@ -78,7 +80,7 @@ class MagicTalesCoreOrchestrator:
         self,
         config: DictConfig,
         message_sender: MessageSender,
-        session: Session,
+        session: AsyncSession,
         websocket: WebSocket,
     ) -> None:
         """
@@ -125,17 +127,18 @@ class MagicTalesCoreOrchestrator:
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
 
-    async def process(self, request: WSInput, token_data: dict) -> dict:
+    async def process(self, request: WSInput, token_data: dict) -> None:
         """
         Process incoming commands from the AI Core Interface Layer ().
 
         Args:
-            data (dict): Full command structure. Please look at the ICS docs for more details.
+            request (WSInput): Full command structure. Please look at the ICD docs for more details.
+            token_data (dict): Token data from the AI Core Interface Layer.
 
         Returns:
             dict: Response data to be sent back to the AI Core Interface Layer.
         """
-        logger.debug(request.token)  # DEBUG
+        logger.info(f"token:{request.token}")  # DEBUG
 
         # Refresh access token and set user_id if isn't try_mode
         if request.try_mode is False or None:
@@ -165,7 +168,6 @@ class MagicTalesCoreOrchestrator:
         # ORCH must process EVERY COMAND and delegate in CHAT ASSISTANT
         # ORCH send the ACK message to USER
 
-        # NEW STORIE
         if request.command == Command.NEW_TALE:
             await self.send_message_to_frontend(
                 WSOutput(command=request.command, token=self.new_token, ack=True)
@@ -186,8 +188,7 @@ class MagicTalesCoreOrchestrator:
             )
             asyncio.create_task(self._handle_spin_off_tale(request))
 
-        # UPDATE PROFILE
-        if request.command == Command.USER_REQUEST_UPDATE_PROFILE:
+        elif request.command == Command.UPDATE_PROFILE:
             if not request.profile_id:
                 raise Exception("profile_id is required for update profile")
 
@@ -245,64 +246,104 @@ class MagicTalesCoreOrchestrator:
 
         logger.info(f"Processed command: {request.command}")
 
+    # async def send_message_to_frontend(self, output_model: WSOutput):
+    #     message = Message(
+    #         user_id=self.user_id,
+    #         session_id=self.websocket.uid,
+    #         command=output_model.command,
+    #         origin=OriginEnum.ai,
+    #         type=TypeEnum.command,
+    #         details=output_model.dict(),
+    #     )
+    #     await self._db_add_message_to_session(message)
+    #     await self.message_sender.send_message_to_frontend(output_model)
+
     async def send_message_to_frontend(self, output_model: WSOutput):
+        details_serialized = output_model.dict()  # Uses custom JSON encoder
+
+        # Iterate over all keys in the serialized details and check for Enums
+        for key, value in details_serialized.items():
+            if isinstance(value, Enum):
+                details_serialized[key] = value.value
+            elif value is None:
+                # Optionally remove None values if that's desired
+                details_serialized[key] = (
+                    None  # or use `del details_serialized[key]` if removing
+                )
+
+        # Now `details_serialized` contains only JSON-serializable types
         message = Message(
             user_id=self.user_id,
             session_id=self.websocket.uid,
             command=output_model.command,
             origin=OriginEnum.ai,
             type=TypeEnum.command,
-            details=output_model.dict(),
+            details=details_serialized,
         )
+
         await self._db_add_message_to_session(message)
         await self.message_sender.send_message_to_frontend(output_model)
 
     # ---------------------------------------------- Getters methods ----------------------------------------------
 
     async def get_user_by_id(self, id) -> User:
-        return self.session.get(User, id)
+        """
+        Asynchronously retrieves a User by ID.
+        """
+        result = await self.session.get(User, id)
+        return result
 
     async def get_profile_by_id(self, id) -> Profile:
-        return self.session.get(Profile, id)
+        """
+        Asynchronously retrieves a Profile by ID.
+        """
+        result = await self.session.get(Profile, id)
+        return result
 
     async def get_story_by_id(self, id) -> Story:
-        return self.session.get(Story, id)
+        """
+        Asynchronously retrieves a Story by ID.
+        """
+        result = await self.session.get(Story, id)
+        return result
 
     async def get_stories_by_user_id(self, user_id) -> List[Story]:
-        profiles_ids = (
-            self.session.execute(select(Profile.id).where(Profile.user_id == user_id))
-            .scalars()
-            .all()
+        """
+        Asynchronously retrieves Stories by a User's ID, through their Profiles.
+        """
+        profiles_result = await self.session.execute(
+            select(Profile.id).where(Profile.user_id == user_id)
         )
-        return (
-            self.session.execute(
-                select(Story).filter(Story.profile_id.in_(profiles_ids))
-            )
-            .scalars()
-            .all()
+        profiles_ids = profiles_result.scalars().all()
+
+        stories_result = await self.session.execute(
+            select(Story).filter(Story.profile_id.in_(profiles_ids))
         )
+        return stories_result.scalars().all()
 
     async def get_stories_by_profile_id(self, profile_id) -> List[Story]:
-        return (
-            self.session.execute(select(Story).where(Story.profile_id == profile_id))
-            .scalars()
-            .all()
+        """
+        Asynchronously retrieves Stories by Profile ID.
+        """
+        result = await self.session.execute(
+            select(Story).where(Story.profile_id == profile_id)
         )
+        return result.scalars().all()
 
     async def get_messages_by_session_id(self, session_id) -> List[Message]:
-        return (
-            self.session.execute(
-                select(Message)
-                .where(Message.session_id == session_id, Message.type == "chat")
-                .order_by(desc(Message.session_id), Message.id)
-            )
-            .scalars()
-            .all()
+        """
+        Asynchronously retrieves Messages by Session ID, filtering for 'chat' messages.
+        """
+        result = await self.session.execute(
+            select(Message)
+            .where(Message.session_id == session_id, Message.type == "chat")
+            .order_by(desc(Message.session_id), Message.id)
         )
+        return result.scalars().all()
 
     # ---------------------------------------------- End getters methods ------------------------------------------
 
-    def create_progress_update(self, **kwargs) -> dict:
+    def create_progress_update(self, **kwargs) -> WSOutput:
         """
         Creates a progress update message in JSON format.
 
@@ -312,21 +353,20 @@ class MagicTalesCoreOrchestrator:
             **kwargs: Keyword arguments representing various components of the progress update message.
 
         Returns:
-            dict: The constructed progress update message in JSON format.
+            WSOutput: The constructed progress update message.
 
         Example usage:
             create_progress_update(story_state="STORY_GENERATION", status=ResponseStatus.STARTED, progress_percent=50, message="Story generation in progress")
         """
 
-        # Base structure for the progress update message
         progress_update = WSOutput(
-            command=Command.PROGRESS_UPDATE,
-        )
+            command=Command.PROGRESS_UPDATE
+        )  # Adjust this based on your Command enum or definitions
 
-        # Update the progress update message with provided keyword arguments
+        # Iterate through the keyword arguments and set them on the progress_update instance
         for key, value in kwargs.items():
-            if key in progress_update:
-                progress_update[key] = value
+            if hasattr(progress_update, key):
+                setattr(progress_update, key, value)
             else:
                 raise KeyError(f"Invalid progress update parameter: '{key}'")
 
@@ -347,7 +387,7 @@ class MagicTalesCoreOrchestrator:
 
         # Generate AI response for the user message
         ai_response, messages = await self.chat_assistant.generate_ai_response(
-            user_message=user_message
+            message=user_message
         )
         logger.info(f"AI response: {ai_response}")
 
@@ -449,16 +489,16 @@ class MagicTalesCoreOrchestrator:
         if user:
             user_info = {
                 "user_id": user.id,
-                "name": user.name,
+                "name": user.username,
                 "email": user.email,
                 "created_at": user.created_at,
             }
 
         # Fetch profiles associated with the user
-        profile_rows = await self.session.execute(
+        profile_result = await self.session.execute(
             select(Profile).where(Profile.user_id == self.user_id)
         )
-        profile_rows = profile_rows.scalars().all()
+        profile_rows = profile_result.scalars().all()
         for profile in profile_rows:
             profiles.append({"profile_id": profile.id, "details": profile.details})
 
@@ -530,7 +570,7 @@ class MagicTalesCoreOrchestrator:
                     await getattr(self, method_name)(**kwargs)
 
                     # Move to the next step
-                    current_step = StoryState(current_step.value + 1)
+                    current_step = StoryState.next(current_step)
                     self._update_and_serialize_step(current_step)
                 except Exception as e:
                     logger.error(
@@ -579,27 +619,27 @@ class MagicTalesCoreOrchestrator:
         extracts story elements, and updates the database and knowledge base accordingly.
         """
         logger.info("Starting User-Facing chat Phase")
+
+        # Ensure self.knowledge_base_files is a list, even if it's empty
+        self.knowledge_base_files = self.knowledge_base_files or []
+
         self.chat_assistant = ChatAssistant(
             config=self.config.chat_assistant,
             command_handler=self.handle_assistant_requests,
         )
-        await self.chat_assistant.start_assistant(files_paths=self.knowledge_base_files)
+        user = None
+        if self.user_id:
+            user = await self.get_user_by_id(self.user_id)
 
-        # We should generate a starting message for the user:
-        if self.knowledge_base_files:
-            # We have a knowledge base, so we can generate a starting message to give contest to the LLM assistant
-            message = """
-            I'm very excited to start writing a story for a special person. 
-            I've attached all the files that tell you all about myself, my profiles (i.e. the targets of my stories), and the stories themselves so you can have a full context of me and my previous work with you.
-            If I have only 1 profile, then, it's obvious that the story is either targeted for this person or I might want to create a new profile alltogether.
-            """
-        else:
-            # We don't have a knowledge base, so we this is a brand new client we need to focus on the best possible experiense
-            message = """
-            I'm totaly new to this but I'm very excited to start writing a story for a special person. 
-            I really hope you can make this experience the very best possible and as easy as possible for me.
-            """
-        request = WSInput(Command.USER_MESSAGE, message)
+        await self.chat_assistant.start_assistant(
+            user_data=user, files_paths=self.knowledge_base_files
+        )
+
+        # Generate a starting message for the user based on the knowledge base existence
+        message = self._generate_starting_message()
+        request = WSInput(
+            command=Command.USER_MESSAGE, token=self.new_token, message=message
+        )
         ai_response = await self._handle_user_message(request)
         # Send the response to the AI Core Interface Layer to be sent to the Front End
         await self.send_message_to_frontend(ai_response)
@@ -608,116 +648,213 @@ class MagicTalesCoreOrchestrator:
         await self.chat_assistant.wait_for_chat_completion()
 
         # Process the completed chat
-        await self.on_chat_completed(self.chat_assistant.messages)
+        await self.on_chat_completed(await self.chat_assistant._retrieve_messages())
 
-    async def handle_assistant_requests(self, ai_message_for_system: dict):
+    def _generate_starting_message(self) -> str:
+        """
+        Generates a starting message for the user based on the presence of a knowledge base.
+
+        Returns:
+            str: The starting message for the user.
+        """
+        if self.knowledge_base_files:
+            return """
+            I'm very excited to start writing a story for a special person. 
+            I've attached all the files that tell you all about myself, my profiles, and my stories.
+            """
+        else:
+            return """
+            I'm totally new to this but I'm very excited to start writing a story for a special person. 
+            I hope you can make this experience the very best possible for me.
+            """
+
+    async def handle_assistant_requests(self, ai_message_for_system: WSInput) -> None:
         """
         Processes the Chat AI Assistant message.
         """
         logger.info(
             f"Processing AI message for Magic-Tales Orchestrator: {ai_message_for_system}"
         )
-        if Command.CHAT_COMPLETED in ai_message_for_system:
+        if ai_message_for_system.command == Command.CHAT_COMPLETED:
             self.chat_assistant.chat_completed_event.set()
             logger.info("Chat completed.")
             return
 
-        if not isinstance(ai_message_for_system, dict):
+        if not isinstance(ai_message_for_system, WSInput):
             logger.info(
-                f"AI message for Magic-Tales Orchestrator is not a dict: {ai_message_for_system}"
+                f"AI message for Magic-Tales Orchestrator is not a WSInput: {ai_message_for_system}"
             )
             return
 
-        command = ai_message_for_system.get("command", "")
+        command = ai_message_for_system.command
 
-        if command == "update_profile_DB":
+        if command == Command.UPDATE_PROFILE:
             await self.update_profile(ai_message_for_system)
-        elif command == "new_profile_DB":
+        elif command == Command.NEW_PROFILE:
             await self._db_create_profile(ai_message_for_system)
 
     # ---------------------------------------------- DB Post methods -------------------------------------------------
 
-    async def _db_create_profile(self, ai_message_for_system: dict):
+    async def _db_create_profile_from_chat(self, ai_message_for_system: WSInput):
 
-        profile_details = ai_message_for_system["details"]
+        if not self.user_id:
+            raise Exception("user_id is required for create profile")
+
+        profile_details = ai_message_for_system.message
 
         new_profile = Profile(
             user_id=self.user_id,
             user=await self.get_user_by_id(self.user_id),
             details=profile_details,
         )
-        self.session.add(new_profile)
-        self.session.commit()
+        self._db_create_profile(new_profile)
 
         return new_profile
 
-    async def _db_create_story(self, data: Story):
-        instance = Story(
-            profile_id=data.profile_id,
-            session_id=data.session_id,
-            title=data.title,
-            synopsis=data.synopsis,
-            last_successful_step=data.last_successful_step,
-        )
-        self.session.add(instance)
-        self.session.commit()
-        data.id = instance.id
+    async def _db_create_profile(self, new_profile: Profile) -> Profile:
+        """
+        Asynchronously creates a new profile in the database.
 
-        return data
+        Args:
+            new_profile (Profile): The profile instance to be added to the database.
 
-    async def _db_add_message_to_session(self, data: Message):
-        instance = Message(
-            user_id=data.user_id,
-            session_id=data.session_id,
-            origin=data.origin,
-            type=data.type,
-            command=data.command,
-            details=data.details,
-        )
-        self.session.add(instance)
-        self.session.commit()
-        data.id = instance.id
-        # data.user = await self.get_user_by_id(data.user_id)
+        Returns:
+            Profile: The newly created profile.
 
-        return data
+        Raises:
+            Exception: If `user_id` or `new_profile` is not set.
+        """
+        if not self.user_id:
+            raise Exception("user_id is required to create a profile")
+        if not new_profile:
+            raise Exception("new_profile is required for create profile")
 
-    async def _db_delete_messages_by_session_id(self, session_id):  # (NOT USED)
-        query = Message.__table__.delete().where(Message.session_id == session_id)
-        self.session.execute(query)
-        self.session.commit()
+        try:
+            logger.debug("Starting transaction...")
+            async with self.session.begin():
+                self.session.add(new_profile)
+            logger.debug("Transaction committed.")
+            return new_profile
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(f"Failed to create profile: {e}/n/n{traceback.format_exc()}")
 
-    # ---------------------------------------------- End DB post methods ---------------------------------------------
+    async def _db_create_story(self, data: Story) -> Story:
+        """
+        Asynchronously creates a new story in the database.
 
-    # ---------------------------------------------- DB Update methods -----------------------------------------------
+        Args:
+            data (Story): The story data to be added.
 
-    async def _db_update_profile_by_id(self, profile_id: str, data: Profile):
-        profile = self.get_profile_by_id(profile_id)
-        profile.details = data.details
-        self.session.update(profile)
-        self.session.commit()
+        Returns:
+            Story: The newly created story with updated ID.
+        """
+        try:
+            logger.debug("Starting transaction...")
+            async with self.session.begin():
+                self.session.add(data)
+            await self.session.refresh(data)
+            logger.debug("Transaction committed.")
+            return data
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(f"Failed to create story: {e}/n/n{traceback.format_exc()}")
 
-        return profile
+    async def _db_add_message_to_session(self, data: Message) -> Message:
+        """
+        Asynchronously adds a new message to a session in the database.
 
-    async def _db_link_user_with_conversations(self, session_ids):
-        query = (
-            Message.__table__.update()
-            .where(Message.session_id.in_(session_ids))
-            .values(user_id=self.user_id)
-        )
-        self.session.execute(query)
-        self.session.commit()
+        Args:
+            data (Message): The message data to be added.
+
+        Returns:
+            Message: The newly added message with updated ID.
+        """
+        try:
+            logger.debug("Starting transaction...")
+            async with self.session.begin():
+                self.session.add(data)
+            await self.session.refresh(data)
+            logger.debug("Transaction committed.")
+            return data
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(f"Failed to add message to session: {e}/n/n{traceback.format_exc()}")
+            
+
+    async def _db_delete_messages_by_session_id(self, session_id: int):
+        """
+        Asynchronously deletes messages by session ID. (Not used)
+
+        Args:
+            session_id (int): The ID of the session for which messages should be deleted.
+        """
+        try:
+            logger.debug("Starting transaction...")
+            async with self.session.begin():
+                await self.session.execute(
+                    delete(Message).where(Message.session_id == session_id)
+                )
+            logger.debug("Transaction committed.")
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(f"Failed to delete messages: {e}/n/n{traceback.format_exc()}")            
+
+    async def _db_update_profile_by_id(self, profile_id: str, data: dict) -> Profile:
+        """
+        Asynchronously updates a profile by ID.
+
+        Args:
+            profile_id (str): The ID of the profile to update.
+            data (dict): A dictionary with profile fields to update.
+
+        Returns:
+            Profile: The updated profile.
+        """
+        try:
+            logger.debug("Starting transaction...")
+            async with self.session.begin():
+                profile = await self.session.get(Profile, profile_id)
+                for key, value in data.items():
+                    setattr(profile, key, value)
+            await self.session.commit()
+            logger.debug("Transaction committed.")
+            return profile
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(f"Failed to update profile: {e}/n/n{traceback.format_exc()}")
+
+    async def _db_link_user_with_conversations(self, session_ids: list):
+        """
+        Asynchronously links a user with conversations by updating messages with the user ID.
+
+        Args:
+            session_ids (list): A list of session IDs to update messages with the user ID.
+        """
+        try:
+            logger.debug("Starting transaction...")
+            async with self.session.begin():
+                await self.session.execute(
+                    update(Message)
+                    .where(Message.session_id.in_(session_ids))
+                    .values(user_id=self.user_id)
+                )
+            logger.debug("Transaction committed.")
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(f"Failed to link user with conversations: {e}/n/n{traceback.format_exc()}")
 
     # ---------------------------------------------- End update methods -------------------------------------------
 
-    async def update_profile(self, ai_message_for_system: dict):
+    async def update_profile(self, ai_message_for_system: WSInput):
         """
         Updates a profile based on the AI system message.
 
         Args:
-            ai_message_for_system (dict): The message from the AI system with update details.
+            ai_message_for_system (WSInput): The message from the AI system with update details.
         """
-        profile_id = ai_message_for_system.get("profile_id")
-        updates = ai_message_for_system.get("updates", {}).get("details")
+        profile_id = ai_message_for_system.profile_id
+        updates = ai_message_for_system.message
 
         # Fetch existing profile details
         current_profile = await self.get_profile_by_id(profile_id)
@@ -761,12 +898,12 @@ class MagicTalesCoreOrchestrator:
         merged_details = await self.info_extractor.extract_info(chat_string)
         return merged_details
 
-    async def on_chat_completed(self, messages: List[Dict]) -> None:
+    async def on_chat_completed(self, messages: List[Any]) -> None:
         """
         Callback for handling the completion of the user-facing chat.
 
         Args:
-            messages (List[Dict]): List of chat messages with user interactions.
+            messages (List[ThreadMessage]): List of chat messages with user interactions.
 
         This method processes the chat messages, extracts relevant story elements,
         and updates the database and knowledge base.
@@ -775,52 +912,61 @@ class MagicTalesCoreOrchestrator:
 
         chat_string = await self._convert_chat_to_string(messages)
         updated_elements = await self._extract_chat_key_elements(chat_string)
-        await self._update_database_from_chat_key_elements(updated_elements)
 
-    async def _convert_chat_to_string(self, messages: List[Dict]) -> str:
+        # TODO: If we are in Try_mode we need to go to registration and then get back here to continue the process
+        if self.user_id:
+            await self._update_database_from_chat_key_elements(updated_elements)
+
+    async def _convert_chat_to_string(self, messages: List[Any]) -> str:
         """
-        Converts a list of chat messages into a single concatenated string.
+        Converts a list of chat messages into a single concatenated string, focusing on text content.
 
         Args:
-            messages (List[Dict]): The list of chat messages. Each message is a dictionary containing the role and content.
+            messages (List[ThreadMessage]): The list of chat messages, each containing a list of `Content` objects.
 
         Returns:
-            str: A concatenated string of all chat messages.
-
-        This method facilitates the processing of chat messages for further analysis.
+            str: A concatenated string of all textual chat messages.
         """
-        return "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+        chat_lines = []
+        for msg in messages:
+            for content in msg.content:
+                # Check if the content is of type MessageContentText and extract text
+                if isinstance(content, MessageContentText):
+                    chat_lines.append(f"{msg.role}: {content.text}")
+                # Optionally handle MessageContentImageFile types differently, e.g., by noting an image was present
+                # else if isinstance(content, MessageContentImageFile):
+                #     chat_lines.append(f"{msg.role}: [Image content]")
+        return "\n".join(chat_lines)
 
-    async def _extract_chat_key_elements(
-        self, chat_string: str
-    ) -> Dict:
+    async def _extract_chat_key_elements(self, chat_string: str) -> Dict:
         """
         Asynchronously extracts key story elements from the chat string.
 
-        Parameters:
-        - chat_string (str): The concatenated chat messages as a single string.
+        Args:
+            chat_string (str): The concatenated chat messages as a single string.
 
         Returns:
-        - Dict: A dictionary containing the extracted elements with keys 'personality_profile',
-          'story_features', and 'story_synopsis'.
+            Dict: A dictionary containing extracted elements.
         """
-        chat_key_elements = {
+        tasks = {
             "personality_profile": self.info_extractor.extract_info(
-                f"Make a detailed list of all related features of the individual we want to write a story for from this conversation:\n{chat_string}"
+                f"Make a detailed list of personality traits from this conversation:\n{chat_string}"
             ),
             "story_features": self.info_extractor.extract_info(
-                f"Make a detailed list of all related story features we want to write from this conversation:\n{chat_string}"
+                f"Identify story features from this conversation:\n{chat_string}"
             ),
             "story_synopsis": self.info_extractor.extract_info(
                 f"Extract the latest agreed upon story synopsis from this conversation:\n{chat_string}"
             ),
         }
 
-        results = await asyncio.gather(*chat_key_elements.values())
-        return {key: result for key, result in zip(chat_key_elements.keys(), results)}
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        return {
+            key: (result if not isinstance(result, Exception) else None)
+            for key, result in zip(tasks.keys(), results)
+        }
 
-    async def _update_database_from_chat_key_elements(
-        self, updates: Dict):
+    async def _update_database_from_chat_key_elements(self, updates: Dict):
         """
         Updates the database with the provided updates and refreshes the knowledge base.
 
@@ -828,22 +974,29 @@ class MagicTalesCoreOrchestrator:
         - updates: Dict[str, str, str] - The updates to apply, keyed by the type of update
           ('personality_profile', 'story_features', 'story_synopsis') and containing the new values.
         """
-        # if "profile" in updates:
-        #     profile_details = updates["profile"]
-        #     new_profile = Profile(
-        #         user_id=self.user_id,
-        #         user=await self.get_user_by_id(self.user_id),
-        #         details=profile_details,
-        #     )
-        #     await self._db_update_profile_by_id(
-        #         profile_id=profile_update["id"], data=new_profile
-        #     )
+        if "personality_profile" in updates:
+            profile_details = updates["personality_profile"]
+            new_profile = Profile(
+                user_id=self.user_id,
+                user=await self.get_user_by_id(self.user_id),
+                details=profile_details,
+            )
+            await self._db_create_profile(new_profile)
 
-        # if "story" in updates:
-        #     story_update = updates["story"]
-        #     await self._db_update_story_by_id(
-        #         story_update["id"], {"synopsis": story_update["synopsis"]}
-        #     )
+        story_features = updates.get("story_features", "")
+        self.story_data.story_features = story_features
+
+        story_synopsis = updates.get("story_synopsis", "")
+        self.story_data.synopsis = story_synopsis
+
+        if "story_features" in updates or "story_synopsis" in updates:
+            new_story = Story(
+                profile_id=new_profile.id,
+                features=story_features,
+                synopsis=story_synopsis,
+                last_successful_step=StoryState.USER_FACING_CHAT,
+            )
+            await self._db_create_story(new_story)
 
         logger.info("Database and knowledge base updated with new story elements.")
 
@@ -1174,7 +1327,7 @@ class MagicTalesCoreOrchestrator:
         Filters and creates a str of the chat information based on the specified info type.
 
         Args:
-            chat_assistant_info (List[Tuple[str, int]]): A list of messages generated by the "user_facing_assistant".
+            chat_assistant_info (List[Tuple[str, int]]): A list of messages generated by the "openai_assistant".
                 Each tuple consists of a message (str) and its associated data bucket type (int).
             info_to_extract (int): The information type to extract and summarize.
                 1: Personality Profile, 2: Story Features, 3: Story Synopsis

@@ -1,5 +1,5 @@
-from typing import List, Optional
 from pydantic import BaseModel
+from typing import Optional, Union, Dict, List, Any
 
 
 class WSInput(BaseModel):
@@ -11,4 +11,4 @@ class WSInput(BaseModel):
     story_id: Optional[int] = None
     conversation_id: Optional[str] = None
     session_ids: Optional[List[str]] = None
-    message: Optional[str] = None
+    message: Optional[Union[str, Dict[str, Any]]] = None

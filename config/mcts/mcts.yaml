@@ -1,4 +1,4 @@
-max_num_creation_cycles: 3
+max_num_creation_cycles: 1
 pb_c_base: 1.25
 pb_c_init: 1.25
 node_prior: "uniform"
@@ -12,5 +12,5 @@ regrow_threshold_quality_score: 8.0
 additional_root_children: 2
 name_for_this_creation_run: "Chapter_Gen"
 override_root_with:
-continue_from_last_creation_session: False
+continue_from_last_creation_session: True
 seed_value: 77

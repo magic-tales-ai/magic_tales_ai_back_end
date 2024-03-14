@@ -1,3 +1,4 @@
+from typing import Any
 import traceback
 import os
 import asyncio
@@ -6,10 +7,18 @@ import logging
 import re
 from typing import Dict, List, Optional, Tuple, Callable
 from openai import AsyncOpenAI
+from openai.types.beta.threads import (
+    ThreadMessage,
+    MessageContentText,
+    MessageContentImageFile,
+)
+
 from services.utils.log_utils import get_logger
 from services.chat_assistant.prompt_utils import (
     async_load_prompt_template_from_file,
 )
+from data_structures.ws_input import WSInput
+from data_structures.user import User
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -28,7 +37,7 @@ class ChatAssistant:
         self._validate_openai_api_key()
         self.config = config
         self.client = AsyncOpenAI()
-        self.user_facing_assistant = None
+        self.openai_assistant = None
         self.user_facing_thread = None
         self.user_facing_chat_info = []
         self.chat_completed_event = asyncio.Event()
@@ -40,33 +49,58 @@ class ChatAssistant:
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
 
-    async def _create_assistant(self):
+    async def _create_assistant(self, user_data: User = None):
         """
-        Initializes the OpenAI assistant with attached knowledge base files.
+        Creates a NEW OpenAI assistant with attached knowledge base files.
 
         """
         template_prompt = await async_load_prompt_template_from_file(
-            self.config.instructions_path
+            self.config.instructions_tryout_path
         )
-        instructions = template_prompt.replace(
-            "<user_data>", "It's all included in the attached files."
-        )
-        self.user_facing_assistant = await self.client.beta.assistants.create(
+        tryout_instructions = template_prompt.replace("<user_data>", str(user_data))
+        self.openai_assistant = await self.client.beta.assistants.create(
             name="Smarty Tales",
+            instructions=tryout_instructions,
+            model=self.config.model,
+            tools=[{"type": "retrieval"}],
+        )
+        self.user_facing_thread = await self.client.beta.threads.create()
+        logger.info("OpenAI Assistant Created.")
+
+    async def _retrieve_assistant(self, user_data: User = None):
+        """
+        Retrieves an existing OpenAI assistant with attached knowledge base files.
+
+        """
+        if not user_data or not user_data.assistant_id:
+            raise ValueError("Assistant ID is required for retrieval.")
+
+        template_prompt = await async_load_prompt_template_from_file(
+            self.config.instructions_tryout_path
+        )
+        instructions = template_prompt.replace("<user_data>", str(user_data))
+
+        self.openai_assistant = await self.client.beta.assistants.update(
+            assistant_id=user_data.assistant_id,
             instructions=instructions,
             model=self.config.model,
             tools=[{"type": "retrieval"}],
             file_ids=self.file_ids or [],
         )
+
         self.user_facing_thread = await self.client.beta.threads.create()
-        logger.info("OpenAI Assistant initialized.")
+        logger.info("OpenAI Assistant Retrieved.")
 
     async def _update_assistant(self):
         """
         Initializes the OpenAI assistant with attached knowledge base files.
 
         """
-        self.user_facing_assistant = await self.client.beta.assistants.update(
+        if not id:
+            raise ValueError("Assistant ID is required for updating.")
+
+        self.openai_assistant = await self.client.beta.assistants.update(
+            assistant_id=self.openai_assistant.id,
             file_ids=self.file_ids or [],
         )
         logger.info("OpenAI Assistant UPDATED.")
@@ -83,80 +117,242 @@ class ChatAssistant:
         """
         Process the incoming message and generate an AI response.
 
-        This method is a placeholder for integrating the OpenAI assistant logic.
+        The function sends the message to the OpenAI assistant and retrieves the response.
+        It handles the entire process including sending the message, initiating the run, waiting
+        for completion, and processing the received response.
 
         Args:
             message (str): The message received from the client.
-            parsing_method (Callable): A method to parse the AI response.
+            parsing_method (Callable, optional): A method to parse the AI response.
+
+        Returns:
+            Tuple[str, List]: A tuple containing the response message for the human and
+                              the raw data of messages.
 
         Raises:
-            Exception: If the OpenAI API call fails or no valid response is received.
-
-        Returns:
-            str: The response message to be sent back to the client.
+            Exception: If the OpenAI API call fails or the parsing method encounters an error.
         """
+        messages_data = []
+
         try:
-            # Create the message with the user's input (message)
-            await self.client.beta.threads.messages.create(
-                thread_id=self.user_facing_thread.id,
-                role="user",
-                content=message,
+            # Send the message to the OpenAI assistant
+            await self._send_message_to_assistant(message)
+            # Initiate the assistant run and wait for completion
+            run = await self._wait_for_assistant_run_completion()
+
+            # Retrieve the latest messages from the assistant
+            messages_data = await self._retrieve_messages()
+
+            # Extract the latest AI response message
+            ai_message_for_human, ai_message_for_system = (
+                await self._process_ai_response(messages_data, parsing_method)
             )
 
-            # Initiate the run
-            run = await self.client.beta.threads.runs.create(
-                thread_id=self.user_facing_thread.id,
-                assistant_id=self.user_facing_assistant.id,
-            )
-
-            # Wait for the run to complete
-            while run.status in ["queued", "in_progress"]:
-                await asyncio.sleep(0.5)  # Non-blocking sleep
-                run = await self.client.beta.threads.runs.retrieve(
-                    thread_id=self.user_facing_thread.id,
-                    run_id=run.id,
-                )
-
-            # Retrieve the latest assistant message after the run has completed
-            messages = await self.client.beta.threads.messages.list(
-                thread_id=self.user_facing_thread.id, order="desc"
-            )
-
-            # Process the response to find the latest AI message
-            ai_message = await self._find_latest_ai_response(messages.data)
-            try:
-                ai_message_content = (
-                    ai_message.content[0].text.value if ai_message else ""
-                )
-                ai_message_dict = json.loads(ai_message_content)
-                ai_message_for_human = ai_message_dict.get("message_for_human", "")
-                ai_message_for_system = ai_message_dict.get("message_for_system", {})
+            # Handle any commands for the system included in the AI response
+            if ai_message_for_system:
                 await self.orchestrsator_command_handler(ai_message_for_system)
 
-                return ai_message_for_human, messages.data
-
-            except Exception as e:
-                logger.error(f"Error processing AI message: {traceback.format_exc()}")
-                return ai_message_content, messages.data
+            return ai_message_for_human, messages_data
 
         except Exception as e:
-            logger.error(f"Error processing AI message: {traceback.format_exc()}")
-            return "", messages.data
+            logger.error(
+                f"An error occurred during AI response generation: {e}", exc_info=True
+            )
+            return "", messages_data
 
-    async def _find_latest_ai_response(self, messages: List) -> Optional[dict]:
+    async def _send_message_to_assistant(self, message: str) -> None:
         """
-        Find the latest AI response from a list of messages.
+        Sends the user's message to the OpenAI assistant thread.
 
         Args:
-            messages (List): A list of message dicts in reverse-chronological order.
+            message (str): The message to send to the assistant.
+
+        Raises:
+            Exception: If sending the message fails.
+        """
+        await self.client.beta.threads.messages.create(
+            thread_id=self.user_facing_thread.id,
+            role="user",
+            content=message,
+        )
+        logger.info(f"Message sent to OpenAI Assistant: {message}")
+
+    async def _wait_for_assistant_run_completion(self) -> Any:
+        """
+        Initiates a run with the OpenAI assistant and waits for it to complete.
 
         Returns:
-            Optional[dict]: The latest message dict from the AI or None if not found.
+            Any: The run object after completion.
+
+        Raises:
+            Exception: If initiating or waiting for the run fails.
         """
-        for message in messages:
-            if message.role == "assistant":
-                return message
-        return None
+        run = await self.client.beta.threads.runs.create(
+            thread_id=self.user_facing_thread.id,
+            assistant_id=self.openai_assistant.id,
+        )
+        logger.info("Assistant run initiated, waiting for completion...")
+        while run.status in ["queued", "in_progress"]:
+            await asyncio.sleep(0.5)  # Non-blocking sleep
+            run = await self.client.beta.threads.runs.retrieve(
+                thread_id=self.user_facing_thread.id,
+                run_id=run.id,
+            )
+        logger.info("Assistant run completed.")
+        return run
+
+    async def _retrieve_messages(self) -> List:
+        """
+        Retrieves the list of messages from the OpenAI assistant thread in descending order.
+
+        Returns:
+            List: The list of messages data.
+
+        Raises:
+            Exception: If retrieving the messages fails.
+        """
+        messages = await self.client.beta.threads.messages.list(
+            thread_id=self.user_facing_thread.id, order="desc"
+        )
+        logger.info("Retrieved messages from OpenAI Assistant.")
+        return messages.data
+
+    async def _process_ai_response(
+        self, messages_data: List, parsing_method: Optional[Callable] = None
+    ) -> Tuple[str, Any]:
+        """
+        Processes the OpenAI assistant's latest response.
+
+        Args:
+            messages_data (List): The list of messages data from the assistant.
+            parsing_method (Callable, optional): A method to parse the AI response.
+
+        Returns:
+            Tuple[str, Any]: A tuple of the AI's response for the human and the system command.
+
+        Raises:
+            Exception: If processing the response fails.
+        """
+        # Process the response to find the latest AI message
+        ai_message = next((m for m in messages_data if m.role == "assistant"), None)
+        if not ai_message:
+            raise Exception("No AI message found.")
+
+        ai_message_content = ai_message.content[0].text.value
+        if parsing_method:
+            return parsing_method(ai_message_content)
+        else:
+            return self._default_parsing(ai_message_content)
+
+    # def _default_parsing(self, ai_message_content: str) -> Tuple[str, Any]:
+    #     """
+    #     Default parsing method for the AI response content.
+
+    #     Args:
+    #         ai_message_content (str): The raw AI response content.
+
+    #     Returns:
+    #         Tuple[str, Any]: A tuple of the AI's response for the human and the system command.
+
+    #     Raises:
+    #         json.JSONDecodeError: If parsing the JSON content fails.
+    #     """
+    #     try:
+    #         # Attempt to parse the JSON response
+    #         ai_message_dict = json.loads(ai_message_content)
+    #         ai_message_for_human = ai_message_dict.get("message_for_human", "")
+
+    #         ai_message_for_system = None
+
+    #         if ai_message_dict.get("message_for_system"):
+    #             ai_message_for_system = WSInput(**ai_message_dict.get("message_for_system"))
+
+    #         return ai_message_for_human, ai_message_for_system
+    #     except json.JSONDecodeError:
+    #         # Fallback to regex if JSON parsing fails
+    #         logger.info(f"Error processing AI message. Trying fallback method (re): {ai_message_content}")
+    #         try:
+    #             message_for_human = re.search(r'"message_for_human":\s*"([^"]*)"', ai_message_content).group(1)
+    #             message_for_system = re.search(r'"message_for_system":\s*"([^"]*)"', ai_message_content).group(1)
+    #             return message_for_human, message_for_system
+    #         except Exception as e:
+    #             logger.error(f"Error processing AI message: {traceback.format_exc()}")
+    #             return ai_message_content, None
+
+    def _extract_with_fallbacks(
+        self, ai_message_content: str
+    ) -> Tuple[Optional[str], Optional[dict]]:
+        """
+        Attempts to directly parse AI message content as JSON and extract `message_for_human` and `message_for_system`.
+
+        Args:
+            ai_message_content (str): The raw AI response content.
+
+        Returns:
+            A tuple containing potentially extracted `message_for_human` as str and
+            `message_for_system` as a dict or None for each if not applicable or errors occur.
+        """
+        try:
+            # Directly parse the AI message content as JSON
+            ai_message_dict = json.loads(ai_message_content)
+            message_for_human = ai_message_dict.get("message_for_human")
+            message_for_system = ai_message_dict.get(
+                "message_for_system"
+            )  # This will be a dict or None
+
+            return message_for_human, message_for_system
+
+        except json.JSONDecodeError as e:
+            try:
+                message_for_human = re.search(
+                    r'"message_for_human":\s*"([^"]*)"', ai_message_content
+                ).group(1)
+                message_for_system = re.search(
+                    r'"message_for_system":\s*"([^"]*)"', ai_message_content
+                ).group(1)
+                return message_for_human, message_for_system
+            except Exception as e:
+                logger.error(
+                    f"Failed to parse AI message content: {ai_message_content}/n/nError traceback:/n/n {traceback.format_exc()}"
+                )
+                retry_message = " I apologize, I encountered a hiccup processing your message. Could you rephrase or try again?"
+                message_for_human = (message_for_human or "") + retry_message
+                return message_for_human, None
+
+    def _default_parsing(
+        self, ai_message_content: str
+    ) -> Tuple[Optional[str], Optional[WSInput]]:
+        """
+        Robustly parses AI response content, extracting `message_for_human` and creating a WSInput instance for `message_for_system`.
+        """
+        message_for_human, message_for_system_pre_processed = (
+            self._extract_with_fallbacks(ai_message_content)
+        )
+
+        message_for_system = None
+        if message_for_system_pre_processed:
+            try:
+                # Check if message_for_system_str is a string and attempt to parse it into a dict
+                if isinstance(message_for_system_pre_processed, str):
+                    message_for_system_dict = json.loads(
+                        message_for_system_pre_processed
+                    )
+                elif isinstance(message_for_system_pre_processed, dict):
+                    message_for_system_dict = message_for_system_pre_processed
+                else:
+                    raise ValueError(
+                        "message_for_system is neither a dict nor a stringifiable JSON."
+                    )
+
+                # Now create WSInput instance from the properly parsed dict
+                message_for_system = WSInput(**message_for_system_dict)
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.error(f"Error creating WSInput from system message: {e}")
+                # User-friendly message in case of failure
+                retry_message = " I apologize, I encountered a hiccup processing a system request. Could you rephrase or try again?"
+                message_for_human = (message_for_human or "") + retry_message
+
+        return message_for_human, message_for_system
 
     async def create_and_upload_knowledge_files(
         self, files_paths: List[str]
@@ -170,6 +366,8 @@ class ChatAssistant:
         Returns:
             List[str]: A list of file IDs after upload.
         """
+        # Ensure files_paths is a list, even if it's empty
+        files_paths = files_paths or []
         file_ids = []
         for file_path in files_paths:
             with open(file_path, "rb") as file:
@@ -199,13 +397,19 @@ class ChatAssistant:
         # Then upload the new files
         return await self.create_and_upload_knowledge_files(files_paths)
 
-    async def start_assistant(self, files_paths: List[str]):
+    async def start_assistant(
+        self, user_data: User = None, files_paths: List[str] = []
+    ):
         """
         Starts the chat assistant.
         """
         try:
             self.file_ids = await self.create_and_upload_knowledge_files(files_paths)
-            await self._create_assistant()
+            if user_data:
+                await self._retrieve_assistant(user_data)
+            else:
+                await self._create_assistant(user_data)
+
             logger.info("Chat Assistant initialized.")
 
         except Exception as e:

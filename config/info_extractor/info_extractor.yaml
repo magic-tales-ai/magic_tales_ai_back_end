@@ -1,2 +1,2 @@
-model: "gpt-4-1106-preview"
-instructions_path: "magic_tales/info_extractor/information_extractor_assistant_instructions.txt"
+model: "gpt-4-turbo-preview"
+instructions_path: "services/info_extractor/information_extractor_assistant_instructions.txt"

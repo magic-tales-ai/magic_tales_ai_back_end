@@ -1,5 +1,5 @@
 #!/bin/sh
 # Sort imports
-# isort magic_tales/
+# isort services/
 # Reformat using black
 black .

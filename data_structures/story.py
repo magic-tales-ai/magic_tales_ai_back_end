@@ -27,6 +27,7 @@ class Story(Base):
     profile_id = Column(Integer)
     session_id = Column(String(255))
     title = Column(Text)
+    features = Column(Text)
     synopsis = Column(Text)
     last_successful_step = Column(Integer)
     created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)

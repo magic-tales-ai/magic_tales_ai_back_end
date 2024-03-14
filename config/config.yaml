@@ -7,12 +7,10 @@ defaults:
   - mcts: mcts
   - output_artifacts: output_artifacts
   - parser_llm: parser_llm  
-  - chat_assistant: chat_assistant
-  - chat_ui: chat_ui
+  - chat_assistant: chat_assistant  
   - synthesizer: azure_synthesizer
   - database: database
-  - embeddings: embeddings
-  - ai_core_websocket_server: ai_core_websocket_server
+  - embeddings: embeddings  
 
 hydra:
   run:

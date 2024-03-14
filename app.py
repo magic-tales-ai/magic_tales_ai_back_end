@@ -8,7 +8,7 @@ import uvicorn
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from controllers.AICoreController import ai_core_router
+from controllers.ai_core_controller import ai_core_router
 
 app = FastAPI()
 
