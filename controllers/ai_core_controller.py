@@ -1,4 +1,7 @@
 from fastapi import APIRouter, WebSocket
+import traceback
+
+# from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_session  # get_session is NOW an async function
 from uuid import uuid4
@@ -9,7 +12,7 @@ from services.orchestrator.orchestrator import MagicTalesCoreOrchestrator
 from services.message_sender import MessageSender
 from services.session_service import check_token
 
-from data_structures.ws_input import WSInput
+from models.ws_input import WSInput
 
 ai_core_router = APIRouter(prefix="/bot", tags=["Bot"])
 
@@ -68,7 +71,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await orchestrator.process(request, token_data)
 
         except Exception as ex:
-            await websocket.send_json({"error": str(ex)})
+            await websocket.send_json({"error": str(ex)})            
             await websocket.close()
-            print(f"WebSocket connection error: {ex}")
+            print(f"WebSocket connection error: {ex}/n/n{traceback.format_exc()}")
             break  # Exit the loop to end the session context manager

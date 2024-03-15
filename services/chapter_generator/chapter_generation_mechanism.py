@@ -32,7 +32,7 @@ from .utils.viz_tree_utils import animate_mcts_evolution
 from .utils.chapter_tree import ChapterTree
 from .utils.chapter_node import ChapterNode
 from services.utils.log_utils import get_logger
-from data_structures.story import StoryData
+from models.story import StoryData
 
 # Get a logger instance for this module
 logger = get_logger(__name__)

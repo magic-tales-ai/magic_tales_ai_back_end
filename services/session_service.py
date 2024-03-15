@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="session/login-swagger")
@@ -26,7 +26,7 @@ async def check_token(token: str = Depends(oauth2_scheme)) -> dict:
 async def refresh_access_token(token: str = Depends(oauth2_scheme)) -> str:
     """Asynchronously refreshes the JWT access token."""
     payload = decode_jwt(token)
-    payload["exp"] = datetime.now(tz=datetime.timezone.utc) + timedelta(
+    payload["exp"] = datetime.now(tz=timezone.utc) + timedelta(
         minutes=JWT_EXP_TIME_IN_MINUTES
     )
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)

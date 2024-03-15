@@ -2,7 +2,7 @@ import datetime
 import enum
 from db import Base
 from marshmallow import Schema, fields
-from data_structures.user import UserSchema
+from models.user import UserSchema
 from sqlalchemy import Column, Integer, String, TIMESTAMP, ForeignKey, Enum, JSON
 
 

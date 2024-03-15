@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 from marshmallow import Schema, fields
 from marshmallow.fields import Nested
 
-from data_structures.user import UserSchema
+from models.user import UserSchema
 
 
 class Profile(Base):

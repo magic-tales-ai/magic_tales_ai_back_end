@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 import dill
 import traceback
 
-from data_structures.profile import ProfileSchema
-from data_structures.story_state import StoryState
+from models.profile import ProfileSchema
+from models.story_state import StoryState
 
 from services.utils.log_utils import get_logger
 
@@ -38,6 +38,7 @@ class StorySchema(Schema):
     profile_id = fields.Int()
     session_id = fields.Str()
     title = fields.Str()
+    features = fields.Str()
     synopsis = fields.Str()
     last_successful_step = fields.Int()
     profile = fields.Nested(ProfileSchema, many=False)

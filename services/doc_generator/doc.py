@@ -7,7 +7,7 @@ from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import logging
 
-from data_structures.story import (
+from models.story import (
     StoryData,
 )  # Adjust the import based on your project structure
 

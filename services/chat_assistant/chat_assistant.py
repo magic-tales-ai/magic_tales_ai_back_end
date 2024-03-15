@@ -17,8 +17,8 @@ from services.utils.log_utils import get_logger
 from services.chat_assistant.prompt_utils import (
     async_load_prompt_template_from_file,
 )
-from data_structures.ws_input import WSInput
-from data_structures.user import User
+from models.ws_input import WSInput
+from models.user import User
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -63,6 +63,7 @@ class ChatAssistant:
             instructions=tryout_instructions,
             model=self.config.model,
             tools=[{"type": "retrieval"}],
+            file_ids=self.file_ids or [],        
         )
         self.user_facing_thread = await self.client.beta.threads.create()
         logger.info("OpenAI Assistant Created.")
@@ -73,7 +74,9 @@ class ChatAssistant:
 
         """
         if not user_data or not user_data.assistant_id:
-            raise ValueError("Assistant ID is required for retrieval.")
+            logger.warning("Assistant ID is required for retrieval.")
+            await self._create_assistant(user_data)
+            return
 
         template_prompt = await async_load_prompt_template_from_file(
             self.config.instructions_tryout_path
@@ -156,7 +159,7 @@ class ChatAssistant:
 
         except Exception as e:
             logger.error(
-                f"An error occurred during AI response generation: {e}", exc_info=True
+                f"An error occurred during AI response generation: {e}/n/n{traceback.format_exc()}", exc_info=True
             )
             return "", messages_data
 

@@ -9,6 +9,7 @@ from hydra import initialize, compose
 from hydra.utils import instantiate
 import traceback
 from sqlalchemy import desc, select, delete, update
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from openai.types.beta.threads import MessageContentText
@@ -42,16 +43,17 @@ from services.image_generators.dalle3 import DALLE3ImageGenerator
 from services.utils.log_utils import get_logger
 from services.session_service import refresh_access_token
 
-from data_structures.story_state import StoryState
-from data_structures.story import Story, StoryData, StorySchema
-from data_structures.command import Command
-from data_structures.response import ResponseStatus
-from data_structures.message import Message, MessageSchema, OriginEnum, TypeEnum
-from data_structures.profile import Profile
-from data_structures.user import User
-from data_structures.ws_input import WSInput
-from data_structures.ws_output import WSOutput
+from models.story_state import StoryState
+from models.story import Story, StoryData, StorySchema
+from models.command import Command
+from models.response import ResponseStatus
+from models.message import Message, MessageSchema, OriginEnum, TypeEnum
+from models.profile import Profile
+from models.user import User
+from models.ws_input import WSInput
+from models.ws_output import WSOutput
 
+from db import transaction_context
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -114,7 +116,10 @@ class MagicTalesCoreOrchestrator:
         self.session = session
         self.websocket = websocket
         self.token_data = None
+
         self.user_id = None
+        self.profile_id = None
+        self.story_id = None
         self.new_token = None
 
         self.knowledge_base_files = None
@@ -143,7 +148,7 @@ class MagicTalesCoreOrchestrator:
         # Refresh access token and set user_id if isn't try_mode
         if request.try_mode is False or None:
             self.token_data = token_data
-            self.new_token = refresh_access_token(request.token)
+            self.new_token = await refresh_access_token(request.token)
             self.user_id = token_data.get("user_id")
         else:
             self.token_data = None
@@ -164,9 +169,6 @@ class MagicTalesCoreOrchestrator:
             details=request.model_dump(),
         )
         await self._db_add_message_to_session(conversation)
-
-        # ORCH must process EVERY COMAND and delegate in CHAT ASSISTANT
-        # ORCH send the ACK message to USER
 
         if request.command == Command.NEW_TALE:
             await self.send_message_to_frontend(
@@ -676,6 +678,7 @@ class MagicTalesCoreOrchestrator:
             f"Processing AI message for Magic-Tales Orchestrator: {ai_message_for_system}"
         )
         if ai_message_for_system.command == Command.CHAT_COMPLETED:
+            self.profile_id = ai_message_for_system.profile_id
             self.chat_assistant.chat_completed_event.set()
             logger.info("Chat completed.")
             return
@@ -731,13 +734,15 @@ class MagicTalesCoreOrchestrator:
 
         try:
             logger.debug("Starting transaction...")
-            async with self.session.begin():
+            async with transaction_context(self.session):
                 self.session.add(new_profile)
             logger.debug("Transaction committed.")
             return new_profile
         except SQLAlchemyError as e:
             # Log the exception here
-            raise Exception(f"Failed to create profile: {e}/n/n{traceback.format_exc()}")
+            raise Exception(
+                f"Failed to create profile: {e}/n/n{traceback.format_exc()}"
+            )
 
     async def _db_create_story(self, data: Story) -> Story:
         """
@@ -751,7 +756,7 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             logger.debug("Starting transaction...")
-            async with self.session.begin():
+            async with transaction_context(self.session):
                 self.session.add(data)
             await self.session.refresh(data)
             logger.debug("Transaction committed.")
@@ -772,15 +777,18 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             logger.debug("Starting transaction...")
-            async with self.session.begin():
+            async with transaction_context(self.session):
                 self.session.add(data)
-            await self.session.refresh(data)
             logger.debug("Transaction committed.")
+
+            await self.session.refresh(data)
+
             return data
         except SQLAlchemyError as e:
             # Log the exception here
-            raise Exception(f"Failed to add message to session: {e}/n/n{traceback.format_exc()}")
-            
+            raise Exception(
+                f"Failed to add message to session: {e}/n/n{traceback.format_exc()}"
+            )
 
     async def _db_delete_messages_by_session_id(self, session_id: int):
         """
@@ -791,14 +799,43 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             logger.debug("Starting transaction...")
-            async with self.session.begin():
+            async with transaction_context(self.session):
                 await self.session.execute(
                     delete(Message).where(Message.session_id == session_id)
                 )
             logger.debug("Transaction committed.")
         except SQLAlchemyError as e:
             # Log the exception here
-            raise Exception(f"Failed to delete messages: {e}/n/n{traceback.format_exc()}")            
+            raise Exception(
+                f"Failed to delete messages: {e}/n/n{traceback.format_exc()}"
+            )
+
+    
+    async def _db_update_user_by_id(self, user_id: str, data: dict) -> User:
+        """
+        Asynchronously updates a user by ID.
+
+        Args:
+            user_id (str): The ID of the user to update.
+            data (dict): A dictionary with user fields to update.
+
+        Returns:
+            User: The updated user.
+        """
+        try:
+            logger.debug("Starting transaction...")
+            async with transaction_context(self.session):
+                user = await self.session.get(User, user_id)
+                for key, value in data.items():
+                    setattr(user, key, value)
+            await self.session.commit()
+            logger.debug("Transaction committed.")
+            return user
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(
+                f"Failed to update user: {e}/n/n{traceback.format_exc()}"
+            )
 
     async def _db_update_profile_by_id(self, profile_id: str, data: dict) -> Profile:
         """
@@ -813,7 +850,7 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             logger.debug("Starting transaction...")
-            async with self.session.begin():
+            async with transaction_context(self.session):
                 profile = await self.session.get(Profile, profile_id)
                 for key, value in data.items():
                     setattr(profile, key, value)
@@ -822,8 +859,36 @@ class MagicTalesCoreOrchestrator:
             return profile
         except SQLAlchemyError as e:
             # Log the exception here
-            raise Exception(f"Failed to update profile: {e}/n/n{traceback.format_exc()}")
+            raise Exception(
+                f"Failed to update profile: {e}/n/n{traceback.format_exc()}"
+            )
 
+    async def _db_update_story_by_id(self, story_id: str, data: dict) -> Story:
+        """
+        Asynchronously updates a Story by ID.
+
+        Args:
+            story_id (str): The ID of the profile to update.
+            data (dict): A dictionary with story fields to update.
+
+        Returns:
+            Profile: The updated story.
+        """
+        try:
+            logger.debug("Starting transaction...")
+            async with transaction_context(self.session):
+                story = await self.session.get(Story, story_id)
+                for key, value in data.items():
+                    setattr(story, key, value)
+            await self.session.commit()
+            logger.debug("Transaction committed.")
+            return story
+        except SQLAlchemyError as e:
+            # Log the exception here
+            raise Exception(
+                f"Failed to update story: {e}/n/n{traceback.format_exc()}"
+            )
+        
     async def _db_link_user_with_conversations(self, session_ids: list):
         """
         Asynchronously links a user with conversations by updating messages with the user ID.
@@ -833,7 +898,7 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             logger.debug("Starting transaction...")
-            async with self.session.begin():
+            async with transaction_context(self.session):
                 await self.session.execute(
                     update(Message)
                     .where(Message.session_id.in_(session_ids))
@@ -842,7 +907,9 @@ class MagicTalesCoreOrchestrator:
             logger.debug("Transaction committed.")
         except SQLAlchemyError as e:
             # Log the exception here
-            raise Exception(f"Failed to link user with conversations: {e}/n/n{traceback.format_exc()}")
+            raise Exception(
+                f"Failed to link user with conversations: {e}/n/n{traceback.format_exc()}"
+            )
 
     # ---------------------------------------------- End update methods -------------------------------------------
 
@@ -915,7 +982,10 @@ class MagicTalesCoreOrchestrator:
 
         # TODO: If we are in Try_mode we need to go to registration and then get back here to continue the process
         if self.user_id:
-            await self._update_database_from_chat_key_elements(updated_elements)
+            logger.info("Updating the database with new story elements from chat")
+            await self._create_story_foundation_from_chat_key_elements(updated_elements)            
+            await self._db_update_user_by_id(self.user_id, {"assistant_id": self.chat_assistant.openai_assistant.id})
+            logger.info("Database updated with new story elements from chat")
 
     async def _convert_chat_to_string(self, messages: List[Any]) -> str:
         """
@@ -948,10 +1018,7 @@ class MagicTalesCoreOrchestrator:
         Returns:
             Dict: A dictionary containing extracted elements.
         """
-        tasks = {
-            "personality_profile": self.info_extractor.extract_info(
-                f"Make a detailed list of personality traits from this conversation:\n{chat_string}"
-            ),
+        tasks = {            
             "story_features": self.info_extractor.extract_info(
                 f"Identify story features from this conversation:\n{chat_string}"
             ),
@@ -966,7 +1033,7 @@ class MagicTalesCoreOrchestrator:
             for key, result in zip(tasks.keys(), results)
         }
 
-    async def _update_database_from_chat_key_elements(self, updates: Dict):
+    async def _create_story_foundation_from_chat_key_elements(self, updates: Dict):
         """
         Updates the database with the provided updates and refreshes the knowledge base.
 
@@ -974,14 +1041,18 @@ class MagicTalesCoreOrchestrator:
         - updates: Dict[str, str, str] - The updates to apply, keyed by the type of update
           ('personality_profile', 'story_features', 'story_synopsis') and containing the new values.
         """
-        if "personality_profile" in updates:
-            profile_details = updates["personality_profile"]
-            new_profile = Profile(
-                user_id=self.user_id,
-                user=await self.get_user_by_id(self.user_id),
-                details=profile_details,
-            )
-            await self._db_create_profile(new_profile)
+        # if "personality_profile" in updates:
+        #     profile_details = updates["personality_profile"]
+        #     new_profile = Profile(
+        #         id=self.profile_id,
+        #         user_id=self.user_id,
+        #         user=await self.get_user_by_id(self.user_id),
+        #         details=profile_details,
+        #     )
+        #     await self._db_update_profile_by_id(new_profile)
+
+        current_profile = await self.get_profile_by_id(self.profile_id)
+        self.story_data.personality_profile = current_profile.details if current_profile else ""
 
         story_features = updates.get("story_features", "")
         self.story_data.story_features = story_features
@@ -991,14 +1062,15 @@ class MagicTalesCoreOrchestrator:
 
         if "story_features" in updates or "story_synopsis" in updates:
             new_story = Story(
-                profile_id=new_profile.id,
+                profile_id=self.profile_id,
                 features=story_features,
                 synopsis=story_synopsis,
-                last_successful_step=StoryState.USER_FACING_CHAT,
+                last_successful_step=StoryState.USER_FACING_CHAT.value,
             )
-            await self._db_create_story(new_story)
+            story = await self._db_create_story(new_story)
+            self.story_id = story.id
 
-        logger.info("Database and knowledge base updated with new story elements.")
+        logger.info("Story foundation created on the Database with new story elements from chat.")
 
     async def _generate_story_title(self) -> None:
         """Generate a title for the story based on the user input."""
@@ -1006,6 +1078,10 @@ class MagicTalesCoreOrchestrator:
         message = f"Given the following three pieces of information:\n\n1) Personality profile: {self.story_data.personality_profile}.\n\n2) Story main features: {self.story_data.story_features}.\n\n3) Story Synopsis: {self.story_data.synopsis}.\n\nThe best possible title for the story is:"
         self.story_data.title = await self.info_extractor.extract_info(message)
         logger.info(f"Title: {self.story_data.title}")
+
+        # Update the story database record with the generated title
+        # story = await self._db_update_story_by_id(self.story_id, {"title": self.story_data.title})
+        # self.story_id = story.id
 
         update = self.create_progress_update(
             story_state=StoryState.STORY_TITLE_GENERATION,
@@ -1077,6 +1153,11 @@ class MagicTalesCoreOrchestrator:
             previous_chapter_content = chapter_content
 
         self.story_data.chapters = chapters
+
+        # Update the story database record with the chapters
+        # story = await self._db_update_story_by_id(self.story_id, {"chapters": chapters})
+        # self.story_id = story.id
+
         return
 
     async def _determine_chapter_count(self, story_features: str) -> Union[int, None]:

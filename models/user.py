@@ -9,7 +9,7 @@ class User(Base):
     username = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False, unique=True)
     password = Column(String(255), nullable=False)
-    assistant_id = Column(String(255))
+    assistant_id = Column(String(255), nullable=True)
     created_at = Column(TIMESTAMP)
 
     def __str__(self):
