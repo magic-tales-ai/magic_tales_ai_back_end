@@ -1,8 +1,6 @@
 from fastapi import APIRouter, WebSocket
 import traceback
 
-# from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_session  # get_session is NOW an async function
 from uuid import uuid4
 from datetime import datetime
@@ -42,6 +40,7 @@ async def websocket_endpoint(websocket: WebSocket):
             session=session,
             websocket=websocket,
         )
+        await orchestrator.start()
 
         try:
             # Accept the websocket connection

@@ -1,2 +1,0 @@
-model: "gpt-4-turbo-preview"
-instructions_path: "services/info_extractor/information_extractor_assistant_instructions.txt"

@@ -1,0 +1,6 @@
+name: "Magic-Tales Helper"
+model: "gpt-4-turbo-preview"
+create_instructions_path: "services/openai_assistants/helper_assistant/instructions/helper_assistant_instructions.txt"
+retrieval_instructions_path: "services/openai_assistants/helper_assistant/instructions/helper_assistant_instructions.txt"
+tools:
+  - type: "retrieval"

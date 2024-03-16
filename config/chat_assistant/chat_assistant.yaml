@@ -1,4 +1,7 @@
+name: "Smarty Tales"
 model: "gpt-4-turbo-preview"
-instructions_path: "services/chat_assistant/chat_assistant_instructions.txt"
-instructions_tryout_path: "services/chat_assistant/chat_assistant_instructions_tryout.txt"
-files_path: "services/chat_assistant/chat_assistant_files"
+create_instructions_path: "services/openai_assistants/chat_assistant/instructions/chat_assistant_instructions_tryout.txt"
+retrieval_instructions_path: "services/openai_assistants/chat_assistant/instructions/chat_assistant_instructions.txt"
+files_path: "services/openai_assistants/chat_assistant/chat_assistant_files"
+tools:
+  - type: "retrieval"

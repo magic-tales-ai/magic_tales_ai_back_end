@@ -32,6 +32,18 @@ class Story(Base):
     last_successful_step = Column(Integer)
     created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
 
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "profile_id": self.profile_id,
+            "session_id": self.session_id,
+            "title": self.title,
+            "features": self.features,
+            "synopsis": self.synopsis,
+            "last_successful_step": self.last_successful_step,
+            "created_at": self.created_at,
+        }
+
 
 class StorySchema(Schema):
     id = fields.Int()

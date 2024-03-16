@@ -38,7 +38,7 @@ async def convert_user_info_to_json_files(data: Dict, save_path: str, max_num_fi
     Returns:
         List[str]: The list of file paths for the created JSON files.
     """
-    file_paths = []
+    files_paths = []
     files_created = 0
 
     try:
@@ -46,36 +46,37 @@ async def convert_user_info_to_json_files(data: Dict, save_path: str, max_num_fi
 
         # User info
         if data.get('user_info') and files_created < max_num_files:
-            user_info_path = os.path.join(save_path, f"user_info_{data['user_info']['user_id']}.json")
+            user_info_path = os.path.join(save_path, f"user_info_{data['user_info'].id}.json")
             with open(user_info_path, 'w', encoding='utf-8') as file:
-                json.dump(data['user_info'], file, ensure_ascii=False, indent=4, default=datetime_converter)
-            file_paths.append(user_info_path)
+                json.dump(data['user_info'].to_dict(), file, ensure_ascii=False, indent=4, default=datetime_converter)
+            files_paths.append(user_info_path)
             files_created += 1
 
         # Profiles
         for profile in data.get('profiles', []):
             if files_created >= max_num_files: break
-            profile_path = os.path.join(save_path, f"profile_{profile['profile_id']}.json")
+            profile_path = os.path.join(save_path, f"profile_{profile.id}.json")
             with open(profile_path, 'w', encoding='utf-8') as file:
-                json.dump(profile, file, ensure_ascii=False, indent=4, default=datetime_converter)
-            file_paths.append(profile_path)
+                json.dump(profile.to_dict(), file, ensure_ascii=False, indent=4, default=datetime_converter)
+            files_paths.append(profile_path)
             files_created += 1
 
             # Stories for this profile, grouped in a single file
             if files_created < max_num_files:
-                stories_for_profile = [story for story in data.get('stories', []) if story.get('profile_id') == profile['profile_id']]
+                stories_for_profile = [story for story in data.get('stories', []) if story.profile_id == profile.id]
                 if stories_for_profile:
-                    stories_path = os.path.join(save_path, f"stories_profile_{profile['profile_id']}.json")
+                    stories_path = os.path.join(save_path, f"stories_profile_{profile.id}.json")                    
                     with open(stories_path, 'w', encoding='utf-8') as file:
-                        json.dump(stories_for_profile, file, ensure_ascii=False, indent=4, default=datetime_converter)
-                    file_paths.append(stories_path)
+                        for story in stories_for_profile:
+                            json.dump(story.to_dict(), file, ensure_ascii=False, indent=4, default=datetime_converter)
+                    files_paths.append(stories_path)
                     files_created += 1
 
     except Exception as e:
         logging.error(f"Error in converting data to files: {e}")
         raise
 
-    return file_paths
+    return files_paths
 
 
 

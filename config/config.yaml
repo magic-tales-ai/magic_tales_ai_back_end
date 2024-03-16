@@ -1,13 +1,13 @@
 defaults:  
   - _self_
+  - chat_assistant: chat_assistant  
+  - helper_assistant: helper_assistant
   - chapter_scoring: chapter_scoring  
-  - image_generator: dalle3 
-  - info_extractor: info_extractor
+  - image_generator: dalle3   
   - main_llm: main_llm
   - mcts: mcts
   - output_artifacts: output_artifacts
-  - parser_llm: parser_llm  
-  - chat_assistant: chat_assistant  
+  - parser_llm: parser_llm    
   - synthesizer: azure_synthesizer
   - database: database
   - embeddings: embeddings  

@@ -14,7 +14,14 @@ class User(Base):
 
     def __str__(self):
         return f"User info: username='{self.username}', email='{self.email}', created_at='{self.created_at}')"
-
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "created_at": self.created_at
+        }    
 
 class UserSchema(Schema):
     id = fields.Int()
