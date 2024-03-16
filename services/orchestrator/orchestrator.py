@@ -125,6 +125,7 @@ class MagicTalesCoreOrchestrator:
         self.token_data = None
 
         self.user_id = None
+        self.user = None
         self.profile_id = None
         self.story_id = None
         self.new_token = None
@@ -176,11 +177,16 @@ class MagicTalesCoreOrchestrator:
         # There has been a change in the user_id
         if self.user_id != coming_user_id:
             self.user_id = coming_user_id
-            user = await self.get_user_by_id(self.user_id)
-            if user:                    
-                self.chat_assistant.start_assistant(user)
-                self.helper_assistant.start_assistant(user)
-                
+            self.user = await self.get_user_by_id(self.user_id)
+            if self.user:
+                logger.info(f"User {self.user_id} has been set.")
+                await self.chat_assistant.start_assistant(self.user)
+                await self.helper_assistant.start_assistant(self.user)
+                await self._fetch_user_data_and_create_knowledge_base()
+            else:
+                logger.warn(f"User {self.user_id} has not been found.")
+                        
+
         # CONVERSATION FOR ALL COMMANDS
         conversation = Message(
             user_id=self.user_id,
@@ -273,8 +279,13 @@ class MagicTalesCoreOrchestrator:
 
     
     async def send_message_to_frontend(self, output_model: WSOutput):
-        details_serialized = output_model.dict()  # Uses custom JSON encoder
+        """
+        Sends a message to the AI Core Interface Layer to be sent to the Front End.
+        """
+        await self.message_sender.send_message_to_frontend(output_model)
 
+        # Now we need to save the message to the database        
+        details_serialized = output_model.dict()  
         # Iterate over all keys in the serialized details and check for Enums
         for key, value in details_serialized.items():
             if isinstance(value, Enum):
@@ -296,7 +307,7 @@ class MagicTalesCoreOrchestrator:
         )
 
         # await self._db_add_message_to_session(message)
-        await self.message_sender.send_message_to_frontend(output_model)
+        
 
     # ---------------------------------------------- Getters methods ----------------------------------------------
 
@@ -422,8 +433,6 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("Updating profile.")
 
-        await self._fetch_user_data_and_create_knowledge_base()
-
         # self._reset()
         # await self._process_step(StoryState.USER_FACING_CHAT)
 
@@ -434,9 +443,7 @@ class MagicTalesCoreOrchestrator:
         Returns:
             None.
         """
-        logger.info("Starting a spin-off story generation.")
-
-        await self._fetch_user_data_and_create_knowledge_base()
+        logger.info("Starting a spin-off story generation.")        
 
         # self._reset()
         # await self._process_step(StoryState.USER_FACING_CHAT)
@@ -448,13 +455,38 @@ class MagicTalesCoreOrchestrator:
         Returns:
             None.
         """
-        logger.info("Starting story generation from scratch.")
-
-        await self._fetch_user_data_and_create_knowledge_base()
+        logger.info("Starting story generation from scratch.")        
         
 
         self._reset()
         await self._process_step(StoryState.USER_FACING_CHAT)
+
+    async def _generate_and_send_update_message_for_user(self, request_message: str) -> None:
+        """
+        Sends an update message to the user.
+
+        Args:
+            request_message (str): This is the message we are sending the Assistant to generate an amazing update for the user.
+
+        Returns:
+            None.
+        """
+        # TODO: For some reason I cannot use self.user directly on the messages, I need to use the method to get the user
+        user = await self.get_user_by_id(self.user_id)
+        if not user:
+            logger.error(f"User with id {self.user_id} not found.")
+            user_info = "User not found"
+        else:
+            user_info = user.to_dict()
+
+        request_message = request_message.replace("{user_info}", f"{user_info}")
+        request_message = WSInput(
+            command=Command.USER_MESSAGE, token=self.new_token, message=request_message
+        )
+        ai_response = await self._handle_user_message(request_message)
+        
+        await self.send_message_to_frontend(ai_response)
+        
 
     async def _fetch_user_data_and_create_knowledge_base(self) -> None:
         """
@@ -464,8 +496,12 @@ class MagicTalesCoreOrchestrator:
             List[str]: List of file paths to the created knowledge base files.
         """
         if self.user_id is None:
-            return 
+            return         
 
+        await self._generate_and_send_update_message_for_user(
+            "Please, inform this user/n{user_info}/nthat we are fetching all their information from our DB so that you can have a great and informed chat with them and provide them with the best user exprerience possible. Ask them to be patient and that we are almost ready to continue the story creation process and that you will be updating them on ever step of the way to make sure they have this amazing user experience."
+        )
+                
         # Retrieve user data from the database
         user, profiles, stories = await self._query_user_data()
         self.current_knowledge_base = {
@@ -492,7 +528,7 @@ class MagicTalesCoreOrchestrator:
             Tuple[User, List[Profile], List[Story]]: A tuple containing user information, profiles, and stories.
         """
         # Fetch user information
-        user = await self.get_user_by_id(self.user_id)
+        user = self.user # await self.get_user_by_id(self.user_id)
         
         # Fetch profiles associated with the user
         profile_result = await self.session.execute(
@@ -606,17 +642,10 @@ class MagicTalesCoreOrchestrator:
         This method handles the user-facing chat phase, processes the completed chat,
         extracts story elements, and updates the database and knowledge base accordingly.
         """
-        logger.info("Starting User-Facing chat Phase")
-        await self._fetch_user_data_and_create_knowledge_base()
-
-        # Generate a starting "fake" user message to start the chat
+        logger.info("Starting User-Facing chat Phase")        
+        
         user_message = self._generate_starting_message()
-        request = WSInput(
-            command=Command.USER_MESSAGE, token=self.new_token, message=user_message
-        )
-        ai_response = await self._handle_user_message(request)
-        # Send the response to the AI Core Interface Layer to be sent to the Front End
-        await self.send_message_to_frontend(ai_response)
+        await self._generate_and_send_update_message_for_user(user_message)
 
         # Wait for chat to complete
         await self.chat_assistant.wait_for_chat_completion()
@@ -630,18 +659,16 @@ class MagicTalesCoreOrchestrator:
 
         Returns:
             str: The starting message for the user.
-        """
-        user_info: User = self.current_knowledge_base.get("user_info", None)
-        if user_info:
-            return f"""
-            Hi!, I'm {user_info.to_dict()}.\n\nI'm very excited to start the story creation process with you. It's for a very special person (one of my profiles).
-            I've attached all the files that will inform you about myself, my profiles, and my stories.
-            I hope you can make this experience the very best possible for me.
+        """        
+        if self.user:
+            return """
+            Hi!, You are about to start a conversation with an amazing user. Here are their details/n{user_info}.\nThey are very excited to start the story creation process with you, for that very special person in their lifes.
+            Greet them nicely and make this experience the very best possible for them./n/nI've attached all the files that will inform you about them, their profiles (people we are creating the stories for), and all their stories per profile.            
             """
         else:
             return """
-            I'm totally new to this but I'm very excited to start the story creation process with you. It's for a very special person.
-            I hope you can make this experience the very best possible for me.
+            Hi!, You are about to start a conversation with an amazing NEW user that has never tried this story creation service.
+            Introduce yourself, greet them nicely and make this experience the very best possible for them.            
             """
 
     async def handle_assistant_requests(self, ai_message_for_system: WSInput) -> None:
@@ -666,9 +693,13 @@ class MagicTalesCoreOrchestrator:
         command = ai_message_for_system.command
 
         if command == Command.UPDATE_PROFILE:
-            await self.update_profile(ai_message_for_system)
+            await self._generate_and_send_update_message_for_user(
+            "Please, inform this user/n{user_info}/nthat we are updating their profile with the information they provided us. Ask them to be patient and that Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+            await self._db_update_profile_from_chat(ai_message_for_system)
         elif command == Command.NEW_PROFILE:
-            await self._db_create_profile(ai_message_for_system)
+            await self._generate_and_send_update_message_for_user(
+            "Please, inform this user/n{user_info}/nthat we are creating a new profile with the information they provided us. Ask them to be patient and that Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+            await self._db_create_profile_from_chat(ai_message_for_system)
 
     # ---------------------------------------------- DB Post methods -------------------------------------------------
 
@@ -681,7 +712,7 @@ class MagicTalesCoreOrchestrator:
 
         new_profile = Profile(
             user_id=self.user_id,
-            user=await self.get_user_by_id(self.user_id),
+            user=self.user, # await self.get_user_by_id(self.user_id),
             details=profile_details,
         )
         self._db_create_profile(new_profile)
@@ -884,7 +915,7 @@ class MagicTalesCoreOrchestrator:
 
     # ---------------------------------------------- End update methods -------------------------------------------
 
-    async def update_profile(self, ai_message_for_system: WSInput):
+    async def _db_update_profile_from_chat(self, ai_message_for_system: WSInput):
         """
         Updates a profile based on the AI system message.
 
@@ -904,7 +935,7 @@ class MagicTalesCoreOrchestrator:
         # Update the profile in the database
         updated_profile = Profile(
             user_id=self.user_id,
-            user=await self.get_user_by_id(self.user_id),
+            user=self.user, # await self.get_user_by_id(self.user_id),
             details=merged_details,
         )
         await self._db_update_profile_by_id(profile_id, updated_profile)
@@ -944,6 +975,9 @@ class MagicTalesCoreOrchestrator:
         and updates the database and knowledge base.
         """
         logger.info("User-Facing chat complete. Processing chat messages.")
+
+        await self._generate_and_send_update_message_for_user(
+            "Please, inform this user/n{user_info}/nthat we are extracting all the relevant information from the conversation you just had, and pass it over the incredible team of AI Agents that will help us to create the best story possible for them. Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
 
         chat_string = await self._convert_chat_to_string(messages)
         updated_elements = await self._extract_chat_key_elements(chat_string)
@@ -1052,6 +1086,9 @@ class MagicTalesCoreOrchestrator:
     async def _generate_story_title(self) -> None:
         """Generate a title for the story based on the user input."""
         logger.info(f"Generating a title for the story")
+        await self._generate_and_send_update_message_for_user(
+            "Please, inform this user/n{user_info}/nthat we are generating a title for the story based on the information they provided us. Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+
         message = f"Given the following three pieces of information:\n\n1) Personality profile: {self.story_data.personality_profile}.\n\n2) Story main features: {self.story_data.story_features}.\n\n3) Story Synopsis: {self.story_data.synopsis}.\n\nThe best possible title for the story is (just respond with the Title, nothing else):"
         self.story_data.title, _ = await self.helper_assistant.request_ai_response(message)
         logger.info(f"Title: {self.story_data.title}")
@@ -1063,8 +1100,8 @@ class MagicTalesCoreOrchestrator:
         update = self.create_progress_update(
             story_state=StoryState.STORY_TITLE_GENERATION,
             status=ResponseStatus.STARTED,
-            progress_percent=0,
-            message="",
+            progress_percent=100,
+            message="We have generated a title for the story.",
         )
         await self.send_message_to_frontend(update)
 
@@ -1088,6 +1125,10 @@ class MagicTalesCoreOrchestrator:
         Resturns:
             None
         """
+
+        await self._generate_and_send_update_message_for_user(
+            "Please, inform this user/n{user_info}/nthat we our amazing team of AI Agents, including yourself, is about to start generating the story. Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+
 
         # Initialize a list to hold the chapters
         chapters = []
