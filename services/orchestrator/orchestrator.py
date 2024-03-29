@@ -163,6 +163,11 @@ class MagicTalesCoreOrchestrator:
             dict: Response data to be sent back to the AI Core Interface Layer.
         """
         logger.info(f"token:{request.token}")  # DEBUG
+        
+        if request.command == Command.NEW_TALE or request.command == Command.SPIN_OFF or request.command == Command.UPDATE_PROFILE:
+            await self.send_message_to_frontend(
+                    WSOutput(command=request.command, token=self.new_token, ack=True)
+                )
 
         # Refresh access token and set user_id if isn't try_mode
         if request.try_mode is False or None:
@@ -203,23 +208,23 @@ class MagicTalesCoreOrchestrator:
         await self._db_add_message_to_session(conversation)
 
         if request.command == Command.NEW_TALE:
-            await self.send_message_to_frontend(
-                WSOutput(command=request.command, token=self.new_token, ack=True)
-            )
+            # await self.send_message_to_frontend(
+            #     WSOutput(command=request.command, token=self.new_token, ack=True)
+            # )
             asyncio.create_task(self._handle_new_tale(request))
 
         elif request.command == Command.SPIN_OFF:
             if not request.story_id:
                 raise Exception("story_id is required for spin-off")
 
-            await self.send_message_to_frontend(
-                WSOutput(
-                    command=request.command,
-                    token=self.new_token,
-                    ack=True,
-                    data={"story_parent_id": request.story_id},
-                )
-            )
+            # await self.send_message_to_frontend(
+            #     WSOutput(
+            #         command=request.command,
+            #         token=self.new_token,
+            #         ack=True,
+            #         data={"story_parent_id": request.story_id},
+            #     )
+            # )
             asyncio.create_task(self._handle_spin_off_tale(request))
 
         elif request.command == Command.UPDATE_PROFILE:
@@ -385,7 +390,7 @@ class MagicTalesCoreOrchestrator:
         """
 
         progress_update = WSOutput(
-            command=Command.PROGRESS_UPDATE
+            command=Command.STATUS_UPDATE
         )  # Adjust this based on your Command enum or definitions
 
         # Iterate through the keyword arguments and set them on the progress_update instance
