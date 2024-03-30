@@ -179,10 +179,14 @@ class MagicTalesCoreOrchestrator:
             self.new_token = None
             coming_user_id = None
 
-        # There has been a change in the user_id
+        # There has been a change in the user_id        
         if self.user_id != coming_user_id:
             self.user_id = coming_user_id
             self.user = await self.get_user_by_id(self.user_id)
+            
+            user_message = self._generate_starting_message()
+            await self._generate_and_send_update_message_for_user(user_message)
+
             if self.user:
                 logger.info(f"User {self.user_id} has been set.")
                 await self.chat_assistant.start_assistant(self.user)
@@ -503,9 +507,7 @@ class MagicTalesCoreOrchestrator:
         if self.user_id is None:
             return         
 
-        await self._generate_and_send_update_message_for_user(
-            "Please, inform this user/n{user_info}/nthat we are fetching all their information from our DB so that you can have a great and informed chat with them and provide them with the best user exprerience possible. Ask them to be patient and that we are almost ready to continue the story creation process and that you will be updating them on ever step of the way to make sure they have this amazing user experience."
-        )
+        await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.fetching_user_data)
                 
         # Retrieve user data from the database
         user, profiles, stories = await self._query_user_data()
@@ -522,6 +524,8 @@ class MagicTalesCoreOrchestrator:
         # Ensure files_paths is a list, even if it's empty
         files_paths = files_paths or []
         await self.chat_assistant.update_assistant(files_paths=files_paths)
+
+        await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.after_feching_user_data)
         
 
     async def _query_user_data(self) -> Tuple[User, List[Profile], List[Story]]:
@@ -648,9 +652,6 @@ class MagicTalesCoreOrchestrator:
         extracts story elements, and updates the database and knowledge base accordingly.
         """
         logger.info("Starting User-Facing chat Phase")        
-        
-        user_message = self._generate_starting_message()
-        await self._generate_and_send_update_message_for_user(user_message)
 
         # Wait for chat to complete
         await self.chat_assistant.wait_for_chat_completion()
@@ -666,15 +667,9 @@ class MagicTalesCoreOrchestrator:
             str: The starting message for the user.
         """        
         if self.user:
-            return """
-            Hi!, You are about to start a conversation with an amazing user. Here are their details/n{user_info}.\nThey are very excited to start the story creation process with you, for that very special person in their lifes.
-            Greet them nicely and make this experience the very best possible for them./n/nI've attached all the files that will inform you about them, their profiles (people we are creating the stories for), and all their stories per profile.            
-            """
+            return self.config.updates_request_prompts.starting_message_existing_user
         else:
-            return """
-            Hi!, You are about to start a conversation with an amazing NEW user that has never tried this story creation service.
-            Introduce yourself, greet them nicely and make this experience the very best possible for them.            
-            """
+            return self.config.updates_request_prompts.starting_message_new_user
 
     async def handle_assistant_requests(self, ai_message_for_system: WSInput) -> None:
         """
@@ -687,6 +682,7 @@ class MagicTalesCoreOrchestrator:
             self.profile_id = ai_message_for_system.profile_id
             self.chat_assistant.chat_completed_event.set()
             logger.info("Chat completed.")
+            await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.chat_completed)
             return
 
         if not isinstance(ai_message_for_system, WSInput):
@@ -698,12 +694,10 @@ class MagicTalesCoreOrchestrator:
         command = ai_message_for_system.command
 
         if command == Command.UPDATE_PROFILE:
-            await self._generate_and_send_update_message_for_user(
-            "Please, inform this user/n{user_info}/nthat we are updating their profile with the information they provided us. Ask them to be patient and that Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+            await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.updating_profile)
             await self._db_update_profile_from_chat(ai_message_for_system)
         elif command == Command.NEW_PROFILE:
-            await self._generate_and_send_update_message_for_user(
-            "Please, inform this user/n{user_info}/nthat we are creating a new profile with the information they provided us. Ask them to be patient and that Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+            await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.creating_new_profile)            
             await self._db_create_profile_from_chat(ai_message_for_system)
 
     # ---------------------------------------------- DB Post methods -------------------------------------------------
@@ -981,8 +975,7 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("User-Facing chat complete. Processing chat messages.")
 
-        await self._generate_and_send_update_message_for_user(
-            "Please, inform this user/n{user_info}/nthat we are extracting all the relevant information from the conversation you just had, and pass it over the incredible team of AI Agents that will help us to create the best story possible for them. Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+        await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.chat_info_extraction)            
 
         chat_string = await self._convert_chat_to_string(messages)
         updated_elements = await self._extract_chat_key_elements(chat_string)
@@ -1091,8 +1084,7 @@ class MagicTalesCoreOrchestrator:
     async def _generate_story_title(self) -> None:
         """Generate a title for the story based on the user input."""
         logger.info(f"Generating a title for the story")
-        await self._generate_and_send_update_message_for_user(
-            "Please, inform this user/n{user_info}/nthat we are generating a title for the story based on the information they provided us. Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
+        await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.generating_story_title)
 
         message = f"Given the following three pieces of information:\n\n1) Personality profile: {self.story_data.personality_profile}.\n\n2) Story main features: {self.story_data.story_features}.\n\n3) Story Synopsis: {self.story_data.synopsis}.\n\nThe best possible title for the story is (just respond with the Title, nothing else):"
         self.story_data.title, _ = await self.helper_assistant.request_ai_response(message)
@@ -1131,9 +1123,7 @@ class MagicTalesCoreOrchestrator:
             None
         """
 
-        await self._generate_and_send_update_message_for_user(
-            "Please, inform this user/n{user_info}/nthat we our amazing team of AI Agents, including yourself, is about to start generating the story. Ask them to be patient and that you will be updating them on ever step of the way to make sure they have this amazing user experience.")
-
+        await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.generating_story)            
 
         # Initialize a list to hold the chapters
         chapters = []

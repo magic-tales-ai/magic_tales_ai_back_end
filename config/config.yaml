@@ -9,8 +9,8 @@ defaults:
   - output_artifacts: output_artifacts
   - parser_llm: parser_llm    
   - synthesizer: azure_synthesizer
-  - database: database
-  - embeddings: embeddings  
+  - database: database  
+  - updates_request_prompts: updates_request_prompts
 
 hydra:
   run:
