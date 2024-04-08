@@ -429,6 +429,7 @@ class MagicTalesCoreOrchestrator:
         response = WSOutput(
             command=Command.MESSAGE_FOR_HUMAN,
             message=ai_response,  # AI-generated response to be displayed to the user
+            token=self.new_token,
             working=False,  # Indicates that the response is ready
         )
         return response
