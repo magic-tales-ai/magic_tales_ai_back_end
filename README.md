@@ -59,13 +59,13 @@ pip install -r requirements.txt
 
 All application configurations are managed via a YAML file. Modify the `config.yaml` file to suit your needs.
 
-\`\`\`yaml
+```yaml
 output_artifacts:
   stories_folder_data_storage: "./stories"
   continue_where_we_left_of: true
 image_prompt_gen:
   Other configurations...
-\`\`\`
+```
 
 - Edit .env file (the repo has a .env-example file, you can copy this and rename to .env)
 - Set IP and PORT for the service

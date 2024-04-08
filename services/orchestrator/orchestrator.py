@@ -489,7 +489,7 @@ class MagicTalesCoreOrchestrator:
         else:
             user_info = user.to_dict()
 
-        request_message = request_message.replace("{user_info}", f"{user_info}")
+        request_message = request_message.replace("{user_info}", f"{user_info}") + ". Use strictly the last language they were using with you."
         request_message = WSInput(
             command=Command.USER_MESSAGE, token=self.new_token, message=request_message
         )
