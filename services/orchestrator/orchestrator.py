@@ -315,7 +315,7 @@ class MagicTalesCoreOrchestrator:
             details=details_serialized,
         )
 
-        # await self._db_add_message_to_session(message)
+        await self._db_add_message_to_session(message)
         
 
     # ---------------------------------------------- Getters methods ----------------------------------------------
