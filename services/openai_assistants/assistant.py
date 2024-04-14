@@ -40,7 +40,8 @@ class Assistant(ABC):
         self.openai_assistant = None
         self.openai_thread = None
         self.file_ids = []
-        self.command_handler = command_handler             
+        self.command_handler = command_handler
+        logger.info(f"{self.config.name} AI assistant class initialized.")        
         
 
     def _validate_openai_api_key(self):
@@ -69,7 +70,7 @@ class Assistant(ABC):
             file_ids=self.file_ids or [],        
         )
         self.openai_thread = await self.client.beta.threads.create()
-        logger.info("OpenAI Assistant Created.")
+        logger.info(f"{self.config.name} OpenAI Assistant Created.")
 
     async def _retrieve_assistant(self, user: User = None):
         """
@@ -89,7 +90,7 @@ class Assistant(ABC):
         )
 
         self.openai_thread = await self.client.beta.threads.create()
-        logger.info("OpenAI Assistant Retrieved.")
+        logger.info(f"{self.config.name} OpenAI Assistant Retrieved.")
 
     async def _update_assistant(self):
         """
@@ -103,7 +104,7 @@ class Assistant(ABC):
             assistant_id=self.openai_assistant.id,
             file_ids=self.file_ids or [],
         )
-        logger.info("OpenAI Assistant UPDATED.")
+        logger.info(f"{self.config.name} OpenAI Assistant UPDATED.")
 
     async def request_ai_response(
         self, message: str, parsing_method: Optional[Callable] = None
@@ -169,7 +170,7 @@ class Assistant(ABC):
             role="user",
             content=message,
         )
-        logger.info(f"Message sent to OpenAI Assistant: {message}")
+        logger.info(f"Message sent to {self.config.name}: {message}")
 
     async def _wait_for_assistant_run_completion(self) -> Any:
         """
@@ -185,14 +186,14 @@ class Assistant(ABC):
             thread_id=self.openai_thread.id,
             assistant_id=self.openai_assistant.id,
         )
-        logger.info("Assistant run initiated, waiting for completion...")
+        logger.info(f"{self.config.name} assistant run initiated, waiting for completion...")
         while run.status in ["queued", "in_progress"]:
             await asyncio.sleep(0.5)  # Non-blocking sleep
             run = await self.client.beta.threads.runs.retrieve(
                 thread_id=self.openai_thread.id,
                 run_id=run.id,
             )
-        logger.info("Assistant run completed.")
+        logger.info(f"{self.config.name} assistant run completed.")
         return run
 
     async def _retrieve_messages(self) -> List:
@@ -208,7 +209,7 @@ class Assistant(ABC):
         messages = await self.client.beta.threads.messages.list(
             thread_id=self.openai_thread.id, order="desc"
         )
-        logger.info("Retrieved messages from OpenAI Assistant.")
+        logger.info(f"Retrieved messages from {self.config.name}")
         return messages.data
 
     async def _process_ai_response(
@@ -316,9 +317,7 @@ class Assistant(ABC):
             if user:
                 await self._retrieve_assistant(user)
             else:
-                await self._create_assistant()
-
-            logger.info("OpenAI Assistant initialized.")
+                await self._create_assistant()            
 
         except Exception as e:
             logger.error(f"Error initializing assistant: {traceback.format_exc()}")

@@ -1,5 +1,5 @@
 name: "Smarty Tales"
-model: "gpt-4-turbo-preview"
+model: "gpt-4-turbo-2024-04-09"
 create_instructions_path: "services/openai_assistants/chat_assistant/instructions/chat_assistant_instructions_tryout.txt"
 retrieval_instructions_path: "services/openai_assistants/chat_assistant/instructions/chat_assistant_instructions.txt"
 files_path: "services/openai_assistants/chat_assistant/chat_assistant_files"

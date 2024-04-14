@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import traceback
 
 from db import get_session  # get_session is NOW an async function
@@ -39,8 +39,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message_sender=message_sender,
             session=session,
             websocket=websocket,
-        )
-        await orchestrator.start()
+        )        
 
         try:
             # Accept the websocket connection
@@ -48,29 +47,37 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_json({"uid": websocket.uid})
 
             while True:
-                data = await websocket.receive_json()
-                request = WSInput(**data)
+                try:
+                    data = await websocket.receive_json()
+                    request = WSInput(**data)
 
-                # Validate token if not in try_mode
-                if not request.try_mode:
-                    token_data = await check_token(
-                        request.token
-                    )  # Ensure check_token is an async function
-                    if not token_data:
-                        raise Exception("Invalid token.")
-                else:
-                    token_data = None
+                    # Validate token if not in try_mode
+                    if not request.try_mode:
+                        token_data = await check_token(
+                            request.token
+                        )
+                        if not token_data:
+                            raise Exception("Invalid token.")
+                    else:
+                        token_data = None
 
-                # Validate command is not empty
-                if not request.command:
-                    await websocket.send_json({"error": "Command can't be null"})
-                    continue
+                    # Validate command is not empty
+                    if not request.command:
+                        await websocket.send_json({"error": "Command can't be null"})
+                        continue
 
-                # Process the command with the orchestrator
-                await orchestrator.process(request, token_data)
+                    # Process the command with the orchestrator
+                    await orchestrator.process_request(request, token_data)
+
+                except WebSocketDisconnect:
+                    print("WebSocket disconnected by the server")
+                    break
 
         except Exception as ex:
-            await websocket.send_json({"error": str(ex)})            
-            await websocket.close()
+            # await websocket.send_json({"error": str(ex)})            
+            # await websocket.close()
             print(f"WebSocket connection error: {ex}/n/n{traceback.format_exc()}")
-            break  # Exit the loop to end the session context manager
+            # break  # Exit the loop to end the session context manager
+        finally:
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.close(code=1000)  # Normal closure

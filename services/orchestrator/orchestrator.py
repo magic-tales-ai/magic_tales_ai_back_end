@@ -131,19 +131,14 @@ class MagicTalesCoreOrchestrator:
         self.new_token = None
 
         self.current_knowledge_base = {}
+
+        self.token_refresh_interval = 30  # 2 minutes in seconds
+        self.token_refresh_task = None
+
+        self.chat_completed = False
         
         logger.info("MagicTales initialized.")
-
-    async def start(self):
-        """
-        Run the Magic Tales Core server.
-        """
-        logger.info("Running MagicTales.")
-        #asyncio.run(self._run())
-
-        await self.chat_assistant.start_assistant()
-        await self.helper_assistant.start_assistant()
-
+    
 
     def _validate_openai_api_key(self) -> None:
         """Validates the presence of the OpenAI API key."""
@@ -151,9 +146,9 @@ class MagicTalesCoreOrchestrator:
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
 
-    async def process(self, request: WSInput, token_data: dict) -> None:
+    async def process_request(self, request: WSInput, token_data: dict) -> None:
         """
-        Process incoming commands from the AI Core Interface Layer ().
+        Process incoming commands/requests from the AI Core Interface Layer ().
 
         Args:
             request (WSInput): Full command structure. Please look at the ICD docs for more details.
@@ -162,13 +157,8 @@ class MagicTalesCoreOrchestrator:
         Returns:
             dict: Response data to be sent back to the AI Core Interface Layer.
         """
-        logger.info(f"token:{request.token}")  # DEBUG
-        
-        if request.command == Command.NEW_TALE or request.command == Command.SPIN_OFF or request.command == Command.UPDATE_PROFILE:
-            await self.send_message_to_frontend(
-                    WSOutput(command=request.command, token=self.new_token, ack=True)
-                )
-
+        # logger.info(f"token:{request.token}")  # DEBUG
+                
         # Refresh access token and set user_id if isn't try_mode
         if request.try_mode is False or None:
             self.token_data = token_data
@@ -179,21 +169,26 @@ class MagicTalesCoreOrchestrator:
             self.new_token = None
             coming_user_id = None
 
+        if request.command == Command.NEW_TALE or request.command == Command.SPIN_OFF or request.command == Command.UPDATE_PROFILE:
+            await self.send_message_to_frontend(
+                    WSOutput(command=request.command, token=self.new_token, ack=True)
+                )
+
         # There has been a change in the user_id        
         if self.user_id != coming_user_id:
             self.user_id = coming_user_id
-            self.user = await self.get_user_by_id(self.user_id)
-            
-            user_message = self._generate_starting_message()
-            await self._generate_and_send_update_message_for_user(user_message)
+            self.user = await self.get_user_by_id(self.user_id)                     
 
+            user_message = self._generate_starting_message()
             if self.user:
                 logger.info(f"User {self.user_id} has been set.")
                 await self.chat_assistant.start_assistant(self.user)
                 await self.helper_assistant.start_assistant(self.user)
+                await self._generate_and_send_update_message_for_user(user_message)
                 await self._fetch_user_data_and_create_knowledge_base()
             else:
-                logger.warn(f"User {self.user_id} has not been found.")
+                logger.warn(f"User {self.user_id} has not been found.")            
+                await self._generate_and_send_update_message_for_user(user_message)
                         
 
         # CONVERSATION FOR ALL COMMANDS
@@ -211,24 +206,12 @@ class MagicTalesCoreOrchestrator:
         )
         await self._db_add_message_to_session(conversation)
 
-        if request.command == Command.NEW_TALE:
-            # await self.send_message_to_frontend(
-            #     WSOutput(command=request.command, token=self.new_token, ack=True)
-            # )
+        if request.command == Command.NEW_TALE:            
             asyncio.create_task(self._handle_new_tale(request))
 
         elif request.command == Command.SPIN_OFF:
             if not request.story_id:
-                raise Exception("story_id is required for spin-off")
-
-            # await self.send_message_to_frontend(
-            #     WSOutput(
-            #         command=request.command,
-            #         token=self.new_token,
-            #         ack=True,
-            #         data={"story_parent_id": request.story_id},
-            #     )
-            # )
+                raise Exception("story_id is required for spin-off")            
             asyncio.create_task(self._handle_spin_off_tale(request))
 
         elif request.command == Command.UPDATE_PROFILE:
@@ -444,7 +427,7 @@ class MagicTalesCoreOrchestrator:
         logger.info("Updating profile.")
 
         # self._reset()
-        # await self._process_step(StoryState.USER_FACING_CHAT)
+        # await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
 
     async def _handle_spin_off_tale(self, request: WSInput) -> None:
         """
@@ -455,8 +438,8 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("Starting a spin-off story generation.")        
 
-        # self._reset()
-        # await self._process_step(StoryState.USER_FACING_CHAT)
+        self._reset()
+        await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
 
     async def _handle_new_tale(self, request: WSInput) -> None:
         """
@@ -469,7 +452,7 @@ class MagicTalesCoreOrchestrator:
         
 
         self._reset()
-        await self._process_step(StoryState.USER_FACING_CHAT)
+        await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
 
     async def _generate_and_send_update_message_for_user(self, request_message: str) -> None:
         """
@@ -489,7 +472,7 @@ class MagicTalesCoreOrchestrator:
         else:
             user_info = user.to_dict()
 
-        request_message = request_message.replace("{user_info}", f"{user_info}") + ". Use strictly the last language they were using with you."
+        request_message = request_message.replace("{user_info}", f"{user_info}") + " Use strictly the same language they were using with you in the last message or in the last conversation you recall."
         request_message = WSInput(
             command=Command.USER_MESSAGE, token=self.new_token, message=request_message
         )
@@ -585,18 +568,22 @@ class MagicTalesCoreOrchestrator:
                 await self._start_new_story()
             else:
                 logger.info(f"Resuming story generation from step: {last_step}")
-            await self._process_step(last_step)
+            await self._process_story_creation_step(last_step)
         else:
             logger.info("No saved state found, starting a new story.")
             await self._start_new_story()
 
-    async def _process_step(self, current_step: StoryState, **kwargs) -> None:
+    async def _process_story_creation_step(self, current_step: StoryState, **kwargs) -> None:
         """
         Processes a given step and moves to the next step in the story generation process.
 
         Args:
             current_step (StoryState): The current step to be processed.
         """
+        # Start the token refresh task when the story generation process starts
+        if current_step == StoryState.USER_FACING_CHAT:
+            self.token_refresh_task = asyncio.create_task(self.refresh_token_periodically())
+
         while current_step is not StoryState.FINAL_DOCUMENT_GENERATED:
             method_name = self.steps_execution_mapping.get(current_step)
             if method_name and hasattr(self, method_name):
@@ -615,8 +602,29 @@ class MagicTalesCoreOrchestrator:
                 logger.error(f"No method found for step {current_step}")
                 break
 
+        # Cancel the token refresh task when the story generation process is completed or fails
+        if self.token_refresh_task:
+            self.token_refresh_task.cancel()
+
         if current_step is StoryState.FINAL_DOCUMENT_GENERATED:
             logger.info("Story generation process completed.")
+
+    async def refresh_token_periodically(self):
+        while True:
+            try:
+                # Refresh the token
+                self.new_token = await refresh_access_token(self.new_token)
+                logger.info("Access token refreshed.")
+
+                # Sleep for the specified interval
+                await asyncio.sleep(self.token_refresh_interval)
+            except asyncio.CancelledError:
+                # Handle the task cancellation gracefully
+                logger.info("Token refresh task cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"Failed to refresh access token: {e}")
+                break
 
     def _reset(self) -> None:
         """
@@ -652,7 +660,9 @@ class MagicTalesCoreOrchestrator:
         This method handles the user-facing chat phase, processes the completed chat,
         extracts story elements, and updates the database and knowledge base accordingly.
         """
-        logger.info("Starting User-Facing chat Phase")        
+        logger.info("Starting User-Facing chat Phase")   
+        
+        self.chat_completed = False     
 
         # Wait for chat to complete
         await self.chat_assistant.wait_for_chat_completion()
@@ -679,11 +689,12 @@ class MagicTalesCoreOrchestrator:
         logger.info(
             f"Processing AI message for Magic-Tales Orchestrator: {ai_message_for_system}"
         )
-        if ai_message_for_system.command == Command.CHAT_COMPLETED:
+        if ai_message_for_system.command == Command.CHAT_COMPLETED and not self.chat_completed:
             self.profile_id = ai_message_for_system.profile_id
             self.chat_assistant.chat_completed_event.set()
             logger.info("Chat completed.")
             await self._generate_and_send_update_message_for_user(self.config.updates_request_prompts.chat_completed)
+            self.chat_completed = True
             return
 
         if not isinstance(ai_message_for_system, WSInput):
@@ -783,12 +794,12 @@ class MagicTalesCoreOrchestrator:
         try:
             logger.debug("Starting transaction...")
             async with transaction_context(self.session):
-                self.session.add(data)
-            logger.debug("Transaction committed.")
-
-            await self.session.refresh(data)
-
-            return data
+                merged_data = await self.session.merge(data)
+                await self.session.flush()
+                logger.debug("Transaction committed.")
+                persisted_data = merged_data
+            return persisted_data
+            
         except SQLAlchemyError as e:
             # Log the exception here
             raise Exception(
@@ -1099,7 +1110,7 @@ class MagicTalesCoreOrchestrator:
             story_state=StoryState.STORY_TITLE_GENERATION,
             status=ResponseStatus.STARTED,
             progress_percent=100,
-            message="We have generated a title for the story.",
+            message=f"We have generated a title for the story: {self.story_data.title}",
         )
         await self.send_message_to_frontend(update)
 
