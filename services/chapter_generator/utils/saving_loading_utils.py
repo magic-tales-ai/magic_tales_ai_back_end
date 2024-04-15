@@ -257,10 +257,10 @@ def save_content_to_creation_data_storage_folder(
             os.getcwd(),
             top_level_creation_folder,
             content_subfolder,
-            f"{filename}{timestamp}.py",
+            f"{filename}{timestamp}.txt",
         )
     else:
-        fullpath_filename = os.path.join(path, f"{filename}{timestamp}.py")
+        fullpath_filename = os.path.join(path, f"{filename}{timestamp}.txt")
 
     # Check if the directory exists, and create it if necessary
     os.makedirs(os.path.dirname(fullpath_filename), exist_ok=True)

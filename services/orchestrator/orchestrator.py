@@ -1107,7 +1107,7 @@ class MagicTalesCoreOrchestrator:
         # self.story_id = story.id
 
         update = self.create_progress_update(
-            story_state=StoryState.STORY_TITLE_GENERATION,
+            story_state=str(StoryState.STORY_TITLE_GENERATION),
             status=ResponseStatus.STARTED,
             progress_percent=100,
             message=f"We have generated a title for the story: {self.story_data.title}",
@@ -1160,7 +1160,7 @@ class MagicTalesCoreOrchestrator:
             logger.info(message)
 
             update = self.create_progress_update(
-                story_state=StoryState.STORY_GENERATION,
+                story_state=str(StoryState.STORY_GENERATION),
                 status=ResponseStatus.STARTED,
                 progress_percent=(chapter_number / num_chapters) * 100,
                 message=message,
@@ -1285,7 +1285,7 @@ class MagicTalesCoreOrchestrator:
         message = f"Generating image prompts for all chapters."
         logger.info(message)
         update = self.create_progress_update(
-            story_state=StoryState.IMAGE_PROMPT_GENERATION,
+            story_state=str(StoryState.IMAGE_PROMPT_GENERATION),
             status=ResponseStatus.STARTED,
             progress_percent=0,
             message=message,
@@ -1389,7 +1389,7 @@ class MagicTalesCoreOrchestrator:
             message = f"Generating image for Chapter {chapter_number}, Image {image_prompt_index}"
             logger.info(message)
             update = self.create_progress_update(
-                story_state=StoryState.IMAGE_GENERATION,
+                story_state=str(StoryState.IMAGE_GENERATION),
                 status=ResponseStatus.STARTED,
                 progress_percent=0,
                 message=message,
@@ -1409,7 +1409,7 @@ class MagicTalesCoreOrchestrator:
                     message = f"Failed to generate image for Chapter {chapter_number}, Image {image_prompt_index}. Skipping."
                     logger.error(message)
                     update = self.create_progress_update(
-                        story_state=StoryState.IMAGE_GENERATION,
+                        story_state=str(StoryState.IMAGE_GENERATION),
                         status=ResponseStatus.STARTED,
                         progress_percent=0,
                         message=message,
@@ -1419,7 +1419,7 @@ class MagicTalesCoreOrchestrator:
                 message = f"An error occurred while processing Chapter {chapter_number}, Image {image_prompt_index}."
                 logger.error(f"{message}. Details:\n{traceback.format_exc()}")
                 update = self.create_progress_update(
-                    story_state=StoryState.IMAGE_GENERATION,
+                    story_state=str(StoryState.IMAGE_GENERATION),
                     status=ResponseStatus.FAILED,
                     progress_percent=0,
                     message=message,
@@ -1461,7 +1461,7 @@ class MagicTalesCoreOrchestrator:
         message = f"Generating the final story document."
         logger.info(message)
         update = self.create_progress_update(
-            story_state=StoryState.DOCUMENT_GENERATION,
+            story_state=str(StoryState.DOCUMENT_GENERATION),
             status=ResponseStatus.STARTED,
             progress_percent=0,
             message=message,
@@ -1476,7 +1476,7 @@ class MagicTalesCoreOrchestrator:
         message = f"Story generation completed. Hope you enjoy it!"
         logger.info(message)
         update = self.create_progress_update(
-            story_state=StoryState.DOCUMENT_GENERATION,
+            story_state=str(StoryState.DOCUMENT_GENERATION),
             status=ResponseStatus.STARTED,
             progress_percent=0,
             message=message,
