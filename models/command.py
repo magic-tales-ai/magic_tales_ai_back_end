@@ -17,3 +17,5 @@ class Command:
     MESSAGE_FOR_HUMAN = "message_for_human"
     CHAT_COMPLETED = "done"
     STATUS_UPDATE = "status_update"
+    IS_WORKING = "ai_is_working"
+    DONE_WORKING = "ai_done_working"
