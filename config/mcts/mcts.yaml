@@ -1,4 +1,4 @@
-max_num_creation_cycles: 1
+max_num_creation_cycles: 2
 pb_c_base: 1.25
 pb_c_init: 1.25
 node_prior: "uniform"

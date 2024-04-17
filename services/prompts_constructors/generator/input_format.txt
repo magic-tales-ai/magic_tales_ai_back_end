@@ -1,18 +1,26 @@
 ### General Context ###
-You are generating chapter {chapter_number} in a total of {total_num_chapters} chapters. Take this into account for general context.
+- **Chapter Number**: Generating chapter {chapter_number} in a total of {total_num_chapters} chapters. Consider the pacing and character development needed for this chapter's position in the story arc.
 
 ### Previous Version ###
-Current chapter's previous version from the last improvement iteration (the first time we attempt to create a chapter this will be empty):
+- **Revised Drafts**: Incorporate feedback from the current chapter's previous version below to enhance quality and address specific critiques also described below.
+
+- **Current chapter's previous version**: (the first time we attempt to create a chapter this will be empty):
 {current_chapter_previous_version}
 
 ### Story Information & Instructions ###
-General Story information:
+- **Character Development**: Explore and elaborate on character arcs, transformations, and introductions using the 'Story information and instructions' below.
+- **Setting and Atmosphere**: Detail the setting’s influence on the story, evolution of the world, and atmospheric conditions using the 'Story information and instructions' below
+- **Plot Dynamics**: Outline major plot points, conflicts, and future foreshadowing using the 'Story information and instructions' below.
+
+- 'Story information and instructions':
 {story_data}
 
-### Previous Chapter ###
-Previous Chapter in the Story for context and storyline alignment:
+### Previous Chapter Context ###
+- **Narrative Continuity**: Use the previous chapter below to ensure continuity and alignment with the storyline.
+- **Previous Chapter**:
 {previous_chapter}
 
-### Critique ###
+### Critique and Feedback ###
+- **Feedback Integration**: Utilize the critique below to guide revisions, focusing on narrative tone adjustments, character portrayal, and pacing.
 Critique, Rationale & Evaluation Scores:
 {critique}

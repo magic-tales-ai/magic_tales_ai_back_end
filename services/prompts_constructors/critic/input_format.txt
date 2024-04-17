@@ -1,14 +1,14 @@
 ### General Context ###
-You are generating chapter {chapter_number} in a total of {total_num_chapters} chapters. Take this into account for general context.
+- **Chapter Number**: You are critisizing chapter {chapter_number} in a total of {total_num_chapters} chapters. Consider the pacing and character development needed for this chapter's position in the story arc.
 
-### Previous Version ###
-Current chapter's previous version from the last improvement iteration (the first time we attempt to create a chapter this will be empty):
-{current_chapter_previous_version}
+### Current Chapter to be constructively criticized and evaluated ###
+{current_chapter}
 
 ### Story Information & Instructions ###
 General Story information:
 {story_data}
 
-### Previous Chapter ###
-Previous Chapter in the Story for context and storyline alignment:
+### Previous Chapter Context ###
+- **Narrative Continuity**: Use the previous chapter below to ensure continuity and alignment with the storyline.
+- **Previous Chapter**:
 {previous_chapter}

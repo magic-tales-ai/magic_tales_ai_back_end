@@ -14,7 +14,7 @@ from services.prompts_constructors.utils.prompt_utils import load_prompt
 INPUT_DESCRIPTIONS = {
     "chapter_number": "The Chapter number we are working on (starting from 1).",
     "total_num_chapters": "The total number of chapters in the story.",
-    "current_chapter_previous_version": "Current Chapter previous version (if not the first time attemting to generate this chapter).",
+    "current_chapter": "Current Chapter previous version (if not the first time attemting to generate this chapter).",
     "story_data": "Information about the story, including the personality profile of the individual we are trying to help, the story features (theme, genre, audience, etc), the story synopsis that we ageed with the buyer of the story, and the story title.",
     "previous_chapter": "Previous chapter within the story for context and alignment with the global plot.",
 }
@@ -254,7 +254,7 @@ def compose_message_for_LLM(
     human_message = human_message_prompt_template.format(
         chapter_number=input_info.get("chapter_number", 1),
         total_num_chapters=input_info.get("total_num_chapters", 1),
-        current_chapter_previous_version=input_info.get(
+        current_chapter=input_info.get(
             "chapter_generator_response_dict", {}
         ).get("content", " "),
         story_data=story_data,
