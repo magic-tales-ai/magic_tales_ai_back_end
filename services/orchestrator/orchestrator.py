@@ -179,6 +179,7 @@ class MagicTalesCoreOrchestrator:
             self.user_id = coming_user_id
             self.user = await self.get_user_by_id(self.user_id)                     
 
+            await self.send_working_command_to_frontend(True)
             user_message = self._generate_starting_message()
             if self.user:
                 logger.info(f"User {self.user_id} has been set.")
@@ -189,6 +190,8 @@ class MagicTalesCoreOrchestrator:
             else:
                 logger.warn(f"User {self.user_id} has not been found.")            
                 await self._generate_and_send_update_message_for_user(user_message)
+                
+            await self.send_working_command_to_frontend(False)
                         
 
         # CONVERSATION FOR ALL COMMANDS
@@ -207,11 +210,13 @@ class MagicTalesCoreOrchestrator:
         await self._db_add_message_to_session(conversation)
 
         if request.command == Command.NEW_TALE:            
+            await self.send_working_command_to_frontend(True)
             asyncio.create_task(self._handle_new_tale(request))
 
         elif request.command == Command.SPIN_OFF:
             if not request.story_id:
                 raise Exception("story_id is required for spin-off")            
+            await self.send_working_command_to_frontend(True)
             asyncio.create_task(self._handle_spin_off_tale(request))
 
         elif request.command == Command.UPDATE_PROFILE:
@@ -221,6 +226,7 @@ class MagicTalesCoreOrchestrator:
             await self.send_message_to_frontend(
                 WSOutput(command=request.command, token=self.new_token, ack=True)
             )
+            await self.send_working_command_to_frontend(True)
             asyncio.create_task(self._handle_user_request_update_profile(request))            
 
         # CONVERSATION RECOVERY
@@ -263,12 +269,28 @@ class MagicTalesCoreOrchestrator:
             )
 
         elif request.command == Command.USER_MESSAGE:
+            await self.send_working_command_to_frontend(True)
             ai_response = await self._handle_user_message(request)
             # Send the response to the AI Core Interface Layer to be sent to the Front End
             await self.send_message_to_frontend(ai_response)
+            await self.send_working_command_to_frontend(False)
 
         logger.info(f"Processed command: {request.command}")
 
+    async def send_working_command_to_frontend(self, is_working: bool):
+        """
+        Sends a message to the frontend if the AI start working or stop working.
+        If 'is_working' variable is equals to True, it indicate that the AI started working, and if it's False, it indicates that the AI finished the process.
+        """
+        # Send working command to the frontend
+        if is_working:
+            command = Command.IS_WORKING
+        else:
+            command = Command.DONE_WORKING
+            
+        await self.message_sender.send_message_to_frontend(
+            WSOutput(command=command, token=self.new_token)
+        )
     
     async def send_message_to_frontend(self, output_model: WSOutput):
         """
