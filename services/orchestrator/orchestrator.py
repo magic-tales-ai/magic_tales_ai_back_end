@@ -210,13 +210,13 @@ class MagicTalesCoreOrchestrator:
         await self._db_add_message_to_session(conversation)
 
         if request.command == Command.NEW_TALE:            
-            await self.send_working_command_to_frontend(True)
+            # await self.send_working_command_to_frontend(True)
             asyncio.create_task(self._handle_new_tale(request))
 
         elif request.command == Command.SPIN_OFF:
             if not request.story_id:
                 raise Exception("story_id is required for spin-off")            
-            await self.send_working_command_to_frontend(True)
+            # await self.send_working_command_to_frontend(True)
             asyncio.create_task(self._handle_spin_off_tale(request))
 
         elif request.command == Command.UPDATE_PROFILE:
@@ -226,7 +226,7 @@ class MagicTalesCoreOrchestrator:
             await self.send_message_to_frontend(
                 WSOutput(command=request.command, token=self.new_token, ack=True)
             )
-            await self.send_working_command_to_frontend(True)
+            # await self.send_working_command_to_frontend(True)
             asyncio.create_task(self._handle_user_request_update_profile(request))            
 
         # CONVERSATION RECOVERY
@@ -543,7 +543,7 @@ class MagicTalesCoreOrchestrator:
             Tuple[User, List[Profile], List[Story]]: A tuple containing user information, profiles, and stories.
         """
         # Fetch user information
-        user = self.user # await self.get_user_by_id(self.user_id)
+        user = await self.get_user_by_id(self.user_id)
         
         # Fetch profiles associated with the user
         profile_result = await self.session.execute(
