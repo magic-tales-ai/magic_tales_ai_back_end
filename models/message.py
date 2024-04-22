@@ -25,7 +25,7 @@ class Message(Base):
     type = Column(Enum(TypeEnum))
     command = Column(String(255))
     details = Column(JSON)
-    created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=datetime.datetime.now(datetime.UTC))
 
 
 class MessageSchema(Schema):

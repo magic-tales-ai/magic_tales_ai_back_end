@@ -19,7 +19,6 @@ from services.openai_assistants.prompt_utils import (
     async_load_prompt_template_from_file,
 )
 from models.ws_input import WSInput
-from models.user import User
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -27,12 +26,12 @@ logger = get_logger(__name__)
 
 
 class Assistant(ABC):
-    def __init__(self, config, command_handler: Optional[Callable] = None):
+    def __init__(self, config):
         """
         Initialize the OpenAI Assistant.
 
         Args:
-            config (DictConfig): Configuration parameters.            
+            config (DictConfig): Configuration parameters.
         """
         self._validate_openai_api_key()
         self.config = config
@@ -40,9 +39,7 @@ class Assistant(ABC):
         self.openai_assistant = None
         self.openai_thread = None
         self.file_ids = []
-        self.command_handler = command_handler
-        logger.info(f"{self.config.name} AI assistant class initialized.")        
-        
+        logger.info(f"{self.config.name} AI assistant class initialized.")
 
     def _validate_openai_api_key(self):
         """Validates the presence of the OpenAI API key."""
@@ -55,42 +52,60 @@ class Assistant(ABC):
         Creates a NEW OpenAI assistant with attached knowledge base files.
 
         """
-        if not self.config.create_instructions_path:
+        if not self.config.instructions_path:
             raise ValueError("Instructions path is required for assistant creation.")
-        
+
         instructions = await async_load_prompt_template_from_file(
-            self.config.create_instructions_path
+            self.config.instructions_path
         )
-        
+
         self.openai_assistant = await self.client.beta.assistants.create(
             name=self.config.name,
             instructions=instructions,
             model=self.config.model,
             tools=self.config.tools,
-            file_ids=self.file_ids or [],        
+            file_ids=self.file_ids or [],
         )
         self.openai_thread = await self.client.beta.threads.create()
         logger.info(f"{self.config.name} OpenAI Assistant Created.")
 
-    async def _retrieve_assistant(self, user: User = None):
+    async def _retrieve_assistant(self, assistant_id=None):
         """
         Retrieves an existing OpenAI assistant with attached knowledge base files.
 
-        """        
-        if not user or not user.assistant_id:
-            logger.warning("Assistant ID is required for retrieval. We will create a new Assistant.")
+        """
+        if not assistant_id:
+            logger.warning(
+                "Assistant ID is required for retrieval!! We will create a new Assistant."
+            )
             await self._create_assistant()
-            return        
+            return
 
-        self.openai_assistant = await self.client.beta.assistants.update(
-            assistant_id=user.assistant_id,            
-            model=self.config.model,
-            tools=self.config.tools,
-            file_ids=self.file_ids or [],    
-        )
+        try:
+            if not self.config.instructions_path:
+                raise ValueError(
+                    "Instructions path is required for assistant creation."
+                )
+
+            instructions = await async_load_prompt_template_from_file(
+                self.config.instructions_path
+            )
+            self.openai_assistant = await self.client.beta.assistants.update(
+                assistant_id=assistant_id,
+                instructions=instructions,
+                model=self.config.model,
+                tools=self.config.tools,
+                file_ids=self.file_ids or [],
+            )
+        except:
+            logger.error(
+                f"We failed to retrive assistant ID: {assistant_id} from openAI. We will create a new Assistant."
+            )
+            await self._create_assistant()
+            return
 
         self.openai_thread = await self.client.beta.threads.create()
-        logger.info(f"{self.config.name} OpenAI Assistant Retrieved.")
+        logger.info(f"{self.config.name} OpenAI Assistant retrieved succesfuly.")
 
     async def _update_assistant(self):
         """
@@ -108,7 +123,7 @@ class Assistant(ABC):
 
     async def request_ai_response(
         self, message: str, parsing_method: Optional[Callable] = None
-    ) -> Tuple[str, List]:
+    ) -> Tuple[str, str]:
         """
         Process the incoming message and generate an AI response.
 
@@ -121,8 +136,8 @@ class Assistant(ABC):
             parsing_method (Callable, optional): A method to parse the AI response.
 
         Returns:
-            Tuple[str, List]: A tuple containing the response message for the human and
-                              the raw data of messages.
+            Tuple[str, str]: A tuple containing the response message for the human and
+                              for the system.
 
         Raises:
             Exception: If the OpenAI API call fails or the parsing method encounters an error.
@@ -143,17 +158,14 @@ class Assistant(ABC):
                 await self._process_ai_response(messages_data, parsing_method)
             )
 
-            # Handle any commands the system included in the AI response
-            if self.command_handler and ai_message_for_system:
-                await self.command_handler(ai_message_for_system)
-
-            return ai_message_for_human, messages_data
+            return ai_message_for_human, ai_message_for_system
 
         except Exception as e:
             logger.error(
-                f"An error occurred during AI response generation: {e}/n/n{traceback.format_exc()}", exc_info=True
+                f"An error occurred during AI response generation: {e}/n/n{traceback.format_exc()}",
+                exc_info=True,
             )
-            return "", messages_data
+            return "", ""
 
     async def _send_message_to_assistant(self, message: str) -> None:
         """
@@ -186,7 +198,9 @@ class Assistant(ABC):
             thread_id=self.openai_thread.id,
             assistant_id=self.openai_assistant.id,
         )
-        logger.info(f"{self.config.name} assistant run initiated, waiting for completion...")
+        logger.info(
+            f"{self.config.name} assistant run initiated, waiting for completion..."
+        )
         while run.status in ["queued", "in_progress"]:
             await asyncio.sleep(0.5)  # Non-blocking sleep
             run = await self.client.beta.threads.runs.retrieve(
@@ -242,7 +256,7 @@ class Assistant(ABC):
             return parsing_method(ai_message_content)
         else:
             return self._default_parsing(ai_message_content)
-    
+
     @abstractmethod
     def _default_parsing(
         self, ai_message_content: str
@@ -275,11 +289,9 @@ class Assistant(ABC):
                     )
                     file_ids.append(uploaded_file.id)
             except Exception as e:
-                logger.error(
-                    f"Could not upload file {file_path} to OpenAI: {e}"
-                )
+                logger.error(f"Could not upload file {file_path} to OpenAI: {e}")
                 continue  # Skip this file and proceed with the next iteration
-            
+
         return file_ids
 
     async def update_and_upload_knowledge_files(
@@ -299,25 +311,25 @@ class Assistant(ABC):
             try:
                 await self.client.files.delete(file_id)
             except Exception as e:
-                logger.info(f"Could not delete file with ID {file_id}: {e}")  # Log or print the error
+                logger.info(
+                    f"Could not delete file with ID {file_id}: {e}"
+                )  # Log or print the error
                 continue  # Skip this file and proceed with the next iteration
         self.file_ids = []
 
         # Then upload the new files
         return await self.create_and_upload_knowledge_files(files_paths)
 
-    async def start_assistant(
-        self, user: User = None, files_paths: List[str] = []
-    ):
+    async def start_assistant(self, assistant_id=None, files_paths: List[str] = []):
         """
         Starts the chat assistant.
         """
         try:
             self.file_ids = await self.create_and_upload_knowledge_files(files_paths)
-            if user:
-                await self._retrieve_assistant(user)
+            if assistant_id:
+                await self._retrieve_assistant(assistant_id)
             else:
-                await self._create_assistant()            
+                await self._create_assistant()
 
         except Exception as e:
             logger.error(f"Error initializing assistant: {traceback.format_exc()}")
@@ -327,10 +339,8 @@ class Assistant(ABC):
         """
         Starts the chat assistant.
         """
-        try:            
-            self.file_ids = await self.update_and_upload_knowledge_files(
-                files_paths
-            )
+        try:
+            self.file_ids = await self.update_and_upload_knowledge_files(files_paths)
             await self._update_assistant()
 
         except Exception as e:

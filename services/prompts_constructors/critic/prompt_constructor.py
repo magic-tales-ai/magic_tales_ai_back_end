@@ -254,9 +254,9 @@ def compose_message_for_LLM(
     human_message = human_message_prompt_template.format(
         chapter_number=input_info.get("chapter_number", 1),
         total_num_chapters=input_info.get("total_num_chapters", 1),
-        current_chapter=input_info.get(
-            "chapter_generator_response_dict", {}
-        ).get("content", " "),
+        current_chapter=input_info.get("chapter_generator_response_dict", {}).get(
+            "content", " "
+        ),
         story_data=story_data,
         previous_chapter=previous_chapter_content,
     )

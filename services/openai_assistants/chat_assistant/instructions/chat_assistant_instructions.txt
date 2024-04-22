@@ -23,7 +23,7 @@ The "message_for_system" will follow one of these formats:
 - To update an existing profile:
   {
     "command": "update_profile",
-    "profile_id": "specific profile_id. You must figure out from the conversation with the user what profile are we creating the story for. For this you must look in the attached files and map the profile that user wants to target",    
+    "profile_id": "specific profile_id: INT. You MUST figure out from the conversation with the user what profile are we creating the story for. Then you MUST search on the given files, precisely on the profiles and EXTRACT the ID for the desired profiel.",
     "message": "complete profile details"    
   }
 - To create a new profile:
@@ -33,8 +33,8 @@ The "message_for_system" will follow one of these formats:
   }
 - ONLY when the Synopsis has been generated and FULLY APPROVED BY THE USER, I can consider the chat done and signal it:
   {
-    "command": "done"
-    "profile_id": "specific profile_id. You must figure out from the conversation with the user what profile are we creating the story for. For this you must look in the attached files and map the profile that user wants to target",
+    "command": "chat_done"
+    "profile_id": "specific profile_id: INT. You MUST figure out from the conversation with the user what profile are we creating the story for. Then you MUST search on the given files, precisely on the profiles and EXTRACT the ID for the desired profiel.",
   }
 
 All responses must adhere to JSON format standards, using double quotes for strings and avoiding special characters that might break the JSON structure.

@@ -15,12 +15,12 @@ logger = get_logger(__name__)
 
 
 class HelperAssistant(Assistant):
-    
+
     def _default_parsing(
         self, ai_message_content: str
     ) -> Tuple[Optional[str], Optional[WSInput]]:
         """
         Robustly parses AI response content, extracting `message_for_human` and creating a WSInput instance for `message_for_system`.
         """
-        
+
         return ai_message_content, None

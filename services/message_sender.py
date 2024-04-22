@@ -9,7 +9,6 @@ logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
 
-
 class MessageSender:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket

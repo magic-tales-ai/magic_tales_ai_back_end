@@ -10,18 +10,22 @@ class User(Base):
     email = Column(String(255), nullable=False, unique=True)
     password = Column(String(255), nullable=False)
     assistant_id = Column(String(255), nullable=True)
+    helper_id = Column(String(255), nullable=True)
     created_at = Column(TIMESTAMP)
+    last_visited = Column(TIMESTAMP)
 
     def __str__(self):
-        return f"User info: username='{self.username}', email='{self.email}', created_at='{self.created_at}')"
-    
+        return f"User info: username='{self.username}', email='{self.email}', created_at='{self.created_at}, last_visited='{self.last_visited}'')"
+
     def to_dict(self):
         return {
             "id": self.id,
             "username": self.username,
             "email": self.email,
-            "created_at": self.created_at
-        }    
+            "created_at": self.created_at,
+            "last_visited": self.last_visited,
+        }
+
 
 class UserSchema(Schema):
     id = fields.Int()

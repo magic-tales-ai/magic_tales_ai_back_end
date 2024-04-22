@@ -28,12 +28,12 @@ logger = get_logger(__name__)
 
 
 class Assistant(ABC):
-    def __init__(self, config, command_handler: Optional[Callable] = None):
+    def __init__(self, config):
         """
         Initialize the OpenAI Assistant.
 
         Args:
-            config (DictConfig): Configuration parameters.            
+            config (DictConfig): Configuration parameters.
         """
         self._validate_openai_api_key()
         self.config = config
@@ -41,8 +41,6 @@ class Assistant(ABC):
         self.openai_assistant = None
         self.openai_thread = None
         self.file_ids = []
-        self.command_handler = command_handler             
-        
 
     def _validate_openai_api_key(self):
         """Validates the presence of the OpenAI API key."""
@@ -57,17 +55,17 @@ class Assistant(ABC):
         """
         if not self.config.create_instructions_path:
             raise ValueError("Instructions path is required for assistant creation.")
-        
+
         instructions = await async_load_prompt_template_from_file(
             self.config.create_instructions_path
         )
-        
+
         self.openai_assistant = await self.client.beta.assistants.create(
             name=self.config.name,
             instructions=instructions,
             model=self.config.model,
             tools=self.config.tools,
-            file_ids=self.file_ids or [],        
+            file_ids=self.file_ids or [],
         )
         self.openai_thread = await self.client.beta.threads.create()
         logger.info("OpenAI Assistant Created.")
@@ -76,17 +74,19 @@ class Assistant(ABC):
         """
         Retrieves an existing OpenAI assistant with attached knowledge base files.
 
-        """        
+        """
         if not user or not user.assistant_id:
-            logger.warning("Assistant ID is required for retrieval. We will create a new Assistant.")
+            logger.warning(
+                "Assistant ID is required for retrieval. We will create a new Assistant."
+            )
             await self._create_assistant()
-            return        
+            return
 
         self.openai_assistant = await self.client.beta.assistants.update(
-            assistant_id=user.assistant_id,            
+            assistant_id=user.assistant_id,
             model=self.config.model,
             tools=self.config.tools,
-            file_ids=self.file_ids or [],    
+            file_ids=self.file_ids or [],
         )
 
         self.openai_thread = await self.client.beta.threads.create()
@@ -135,11 +135,12 @@ class Assistant(ABC):
             # Initiate the assistant run and wait for completion
             with self.client.beta.threads.runs.create_and_stream(
                 thread_id=self.openai_thread.id,
-                assistant_id=self.openai_assistant.id,               
-                event_handler=EventHandler(self.openai_thread.id, self.openai_assistant.id),
-                ) as stream:
+                assistant_id=self.openai_assistant.id,
+                event_handler=EventHandler(
+                    self.openai_thread.id, self.openai_assistant.id
+                ),
+            ) as stream:
                 stream.until_done()
-
 
             # run = await self._wait_for_assistant_run_completion()
 
@@ -151,17 +152,14 @@ class Assistant(ABC):
                 await self._process_ai_response(messages_data, parsing_method)
             )
 
-            # Handle any commands the system included in the AI response
-            if self.command_handler and ai_message_for_system:
-                await self.command_handler(ai_message_for_system)
-
-            return ai_message_for_human, messages_data
+            return ai_message_for_human, ai_message_for_system
 
         except Exception as e:
             logger.error(
-                f"An error occurred during AI response generation: {e}/n/n{traceback.format_exc()}", exc_info=True
+                f"An error occurred during AI response generation: {e}/n/n{traceback.format_exc()}",
+                exc_info=True,
             )
-            return "", messages_data
+            return "", ""
 
     async def _send_message_to_assistant(self, message: str) -> None:
         """
@@ -250,7 +248,7 @@ class Assistant(ABC):
             return parsing_method(ai_message_content)
         else:
             return self._default_parsing(ai_message_content)
-    
+
     @abstractmethod
     def _default_parsing(
         self, ai_message_content: str
@@ -283,11 +281,9 @@ class Assistant(ABC):
                     )
                     file_ids.append(uploaded_file.id)
             except Exception as e:
-                logger.error(
-                    f"Could not upload file {file_path} to OpenAI: {e}"
-                )
+                logger.error(f"Could not upload file {file_path} to OpenAI: {e}")
                 continue  # Skip this file and proceed with the next iteration
-            
+
         return file_ids
 
     async def update_and_upload_knowledge_files(
@@ -307,16 +303,16 @@ class Assistant(ABC):
             try:
                 await self.client.files.delete(file_id)
             except Exception as e:
-                logger.info(f"Could not delete file with ID {file_id}: {e}")  # Log or print the error
+                logger.info(
+                    f"Could not delete file with ID {file_id}: {e}"
+                )  # Log or print the error
                 continue  # Skip this file and proceed with the next iteration
         self.file_ids = []
 
         # Then upload the new files
         return await self.create_and_upload_knowledge_files(files_paths)
 
-    async def start_assistant(
-        self, user: User = None, files_paths: List[str] = []
-    ):
+    async def start_assistant(self, user: User = None, files_paths: List[str] = []):
         """
         Starts the chat assistant.
         """
@@ -337,10 +333,8 @@ class Assistant(ABC):
         """
         Starts the chat assistant.
         """
-        try:            
-            self.file_ids = await self.update_and_upload_knowledge_files(
-                files_paths
-            )
+        try:
+            self.file_ids = await self.update_and_upload_knowledge_files(files_paths)
             await self._update_assistant()
 
         except Exception as e:

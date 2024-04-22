@@ -23,7 +23,7 @@ class OpenAIAssistantManager:
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
-        
+
     @asynccontextmanager
     async def _safe_api_call(self, api_call: Callable[..., AsyncGenerator[None, None]]):
         """A context manager to safely make API calls with error handling and logging."""
@@ -62,13 +62,15 @@ class OpenAIAssistantManager:
     async def list_all_files_for_assistant(self, assistant_id: str) -> List[str]:
         """Lists all files for a given assistant."""
         files = self.client.beta.assistants.files.list(assistant_id=assistant_id)
-        file_ids = [file['id'] for file in files['data']]
+        file_ids = [file["id"] for file in files["data"]]
         return file_ids
 
     async def delete_files_for_assistant(self, assistant_id: str, file_ids: List[str]):
         """Deletes all files for a given assistant."""
         for file_id in file_ids:
-            self.client.beta.assistants.files.delete(assistant_id=assistant_id, file_id=file_id)
+            self.client.beta.assistants.files.delete(
+                assistant_id=assistant_id, file_id=file_id
+            )
 
     async def delete_assistant(self, assistant_id: str):
         """Deletes a given assistant."""
@@ -78,12 +80,16 @@ class OpenAIAssistantManager:
         """Deletes all assistants and their files."""
         assistant_ids = await self.list_all_assistants()
         for assistant_id in assistant_ids:
-            file_ids = await self.list_all_files_for_assistant(assistant_id=assistant_id)
+            file_ids = await self.list_all_files_for_assistant(
+                assistant_id=assistant_id
+            )
             await self.delete_files_for_assistant(assistant_id, file_ids)
             await self.delete_assistant(assistant_id)
         print("All assistants and their files have been deleted.")
 
-if __name__ == "__main__":    
+
+if __name__ == "__main__":
+
     async def main():
         manager = OpenAIAssistantManager()
         # Example usage

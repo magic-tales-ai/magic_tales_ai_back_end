@@ -24,17 +24,16 @@ logger = get_logger(__name__)
 
 
 class ChatAssistant(Assistant):
-    def __init__(self, config, command_handler: Callable = None):
+    def __init__(self, config):
         """
         Initialize the Chat Assistant.
 
         Args:
             config (DictConfig): Configuration parameters.
-            command_handler (function): Function to handle messages for the Orchestrator sent by the AI Assistant: DB commands mainly.
         """
-        super().__init__(config, command_handler)
+        super().__init__(config)
         self.chat_completed_event = asyncio.Event()
-        
+
     async def wait_for_chat_completion(self):
         """
         Waits for the chat to complete. This method blocks until the chat_complete_event is set.
@@ -115,4 +114,3 @@ class ChatAssistant(Assistant):
                 message_for_human = (message_for_human or "") + retry_message
 
         return message_for_human, message_for_system
-    

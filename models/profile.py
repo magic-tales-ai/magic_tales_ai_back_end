@@ -15,14 +15,13 @@ class Profile(Base):
     details = Column(Text)
     user_id = Column(ForeignKey("users.id"))
     user = relationship("User", lazy="joined")
-    created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=datetime.datetime.now(datetime.UTC))
 
     def to_dict(self):
         return {
             "id": self.id,
-            "details": self.details,
             "user_id": self.user_id,
-            "user": self.user.to_dict(),
+            "details": self.details,
             "created_at": self.created_at,
         }
 

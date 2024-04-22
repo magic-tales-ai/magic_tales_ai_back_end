@@ -26,7 +26,10 @@ def datetime_converter(o):
         return o.isoformat()
     raise TypeError("Object of type '%s' is not JSON serializable" % type(o).__name__)
 
-async def convert_user_info_to_json_files(data: Dict, save_path: str, max_num_files: int = 20) -> List[str]:
+
+async def convert_user_info_to_json_files(
+    data: Dict, save_path: str, max_num_files: int = 20
+) -> List[str]:
     """
     Converts user data, profiles, and stories grouped by profile into JSON files. Limits the number of files created.
 
@@ -45,30 +48,57 @@ async def convert_user_info_to_json_files(data: Dict, save_path: str, max_num_fi
         os.makedirs(save_path, exist_ok=True)
 
         # User info
-        if data.get('user_info') and files_created < max_num_files:
-            user_info_path = os.path.join(save_path, f"user_info_{data['user_info'].id}.json")
-            with open(user_info_path, 'w', encoding='utf-8') as file:
-                json.dump(data['user_info'].to_dict(), file, ensure_ascii=False, indent=4, default=datetime_converter)
+        if data.get("user_info") and files_created < max_num_files:
+            user_info_path = os.path.join(
+                save_path, f"user_info_{data['user_info'].id}.json"
+            )
+            with open(user_info_path, "w", encoding="utf-8") as file:
+                json.dump(
+                    data["user_info"].to_dict(),
+                    file,
+                    ensure_ascii=False,
+                    indent=4,
+                    default=datetime_converter,
+                )
             files_paths.append(user_info_path)
             files_created += 1
 
         # Profiles
-        for profile in data.get('profiles', []):
-            if files_created >= max_num_files: break
+        for profile in data.get("profiles", []):
+            if files_created >= max_num_files:
+                break
             profile_path = os.path.join(save_path, f"profile_{profile.id}.json")
-            with open(profile_path, 'w', encoding='utf-8') as file:
-                json.dump(profile.to_dict(), file, ensure_ascii=False, indent=4, default=datetime_converter)
+            with open(profile_path, "w", encoding="utf-8") as file:
+                json.dump(
+                    profile.to_dict(),
+                    file,
+                    ensure_ascii=False,
+                    indent=4,
+                    default=datetime_converter,
+                )
             files_paths.append(profile_path)
             files_created += 1
 
             # Stories for this profile, grouped in a single file
             if files_created < max_num_files:
-                stories_for_profile = [story for story in data.get('stories', []) if story.profile_id == profile.id]
+                stories_for_profile = [
+                    story
+                    for story in data.get("stories", [])
+                    if story.profile_id == profile.id
+                ]
                 if stories_for_profile:
-                    stories_path = os.path.join(save_path, f"stories_profile_{profile.id}.json")                    
-                    with open(stories_path, 'w', encoding='utf-8') as file:
+                    stories_path = os.path.join(
+                        save_path, f"stories_profile_{profile.id}.json"
+                    )
+                    with open(stories_path, "w", encoding="utf-8") as file:
                         for story in stories_for_profile:
-                            json.dump(story.to_dict(), file, ensure_ascii=False, indent=4, default=datetime_converter)
+                            json.dump(
+                                story.to_dict(),
+                                file,
+                                ensure_ascii=False,
+                                indent=4,
+                                default=datetime_converter,
+                            )
                     files_paths.append(stories_path)
                     files_created += 1
 
@@ -77,7 +107,6 @@ async def convert_user_info_to_json_files(data: Dict, save_path: str, max_num_fi
         raise
 
     return files_paths
-
 
 
 async def convert_user_info_to_md_files(data: Dict, save_path: str) -> List[str]:

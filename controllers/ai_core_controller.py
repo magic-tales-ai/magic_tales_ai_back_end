@@ -39,7 +39,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message_sender=message_sender,
             session=session,
             websocket=websocket,
-        )        
+        )
 
         try:
             # Accept the websocket connection
@@ -53,9 +53,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # Validate token if not in try_mode
                     if not request.try_mode:
-                        token_data = await check_token(
-                            request.token
-                        )
+                        token_data = await check_token(request.token)
                         if not token_data:
                             raise Exception("Invalid token.")
                     else:
@@ -74,7 +72,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     break
 
         except Exception as ex:
-            # await websocket.send_json({"error": str(ex)})            
+            # await websocket.send_json({"error": str(ex)})
             # await websocket.close()
             print(f"WebSocket connection error: {ex}/n/n{traceback.format_exc()}")
             # break  # Exit the loop to end the session context manager

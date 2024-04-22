@@ -30,7 +30,7 @@ class Story(Base):
     features = Column(Text)
     synopsis = Column(Text)
     last_successful_step = Column(Integer)
-    created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=datetime.datetime.now(datetime.UTC))
 
     def to_dict(self):
         return {
