@@ -158,18 +158,6 @@ class MagicTalesCoreOrchestrator:
         # No matter what We will always have a user!!
         coming_user_id = token_data.get("user_id", None)
 
-        ## TEMP - DELETE ME:
-        ##################################################
-        # We re going to create a user if user_id is empty
-        if request.user_id is None:
-            # Create the new story on the DB
-            timestamp = time.strftime("%Y%m%d-%H%M%S%MS")
-            email = f"{timestamp}@temp_user.com"
-            new_user = User(username="TMP", email=email, password="1")
-            current_user = self._db_create_user(new_user)
-            coming_user_id = current_user.id
-        ##################################################
-
         # Send ACK if command received requires it
         if (
             request.command == Command.NEW_TALE

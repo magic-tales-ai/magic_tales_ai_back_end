@@ -51,13 +51,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     data = await websocket.receive_json()
                     request = WSInput(**data)
 
-                    # Validate token if not in try_mode
-                    if not request.try_mode:
-                        token_data = await check_token(request.token)
-                        if not token_data:
-                            raise Exception("Invalid token.")
-                    else:
-                        token_data = None
+                    # Validate token
+                    token_data = await check_token(request.token)
+                    if not token_data:
+                        raise Exception("Invalid token.")
 
                     # Validate command is not empty
                     if not request.command:
