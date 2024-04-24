@@ -13,7 +13,7 @@
 - **Plot Dynamics**: Outline major plot points, conflicts, and future foreshadowing using the 'Story information and instructions' below.
 
 - 'Story information and instructions':
-{story_data}
+{story_blueprint}
 
 ### Previous Chapter Context ###
 - **Narrative Continuity**: Use the previous chapter below to ensure continuity and alignment with the storyline.

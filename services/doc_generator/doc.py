@@ -1,29 +1,29 @@
 import re
 import os
-from typing import Optional
+from typing import Optional, Dict
 from docx import Document
 from docx.shared import Inches, Pt
 from docx.oxml import parse_xml
 from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import pypandoc
+import traceback
 
 import logging
-
-from models.story import (
-    StoryData,
-)  # Adjust the import based on your project structure
 
 logger = logging.getLogger(__name__)
 
 
 class StoryDocument:
-    def __init__(self, story_data: StoryData) -> None:
-        self.chapters = story_data.post_processed_chapters
-        self.image_filenames = story_data.image_filenames
-        self.story_folder = story_data.story_folder
-        self.images_folder = story_data.images_subfolder
-        self.title = story_data.title
+    def __init__(
+        self, title, chapters, image_filenames, story_folder, images_subfolder
+    ) -> None:
+        self.title = title
+        self.chapters = chapters
+        self.image_filenames = image_filenames
+        self.story_folder = story_folder
+        self.images_folder = images_subfolder
+
         self.doc = Document()
         logger.info("StoryDocument initialized.")
 
@@ -85,25 +85,28 @@ class StoryDocument:
 
     def save_document(self, filename: str) -> str:
         """Save the generated story document to a specified file."""
-        if not filename.endswith('.docx'):
+        if not filename.endswith(".docx"):
             raise ValueError("Filename must end with '.docx'")
-        
+
         filepath = os.path.join(self.story_folder, filename)
         if not os.path.exists(self.story_folder):
             os.makedirs(self.story_folder)
             logging.info(f"Created directory: {self.story_folder}")
-        
+
         try:
             # Assuming 'self.doc' is initialized and represents a docx document
             self.doc.save(filepath)
             logging.info(f"Story document saved in: {filepath}")
         except Exception as e:
-            logging.error(f"Failed to save the document: {e}")
-            raise IOError(f"Failed to save the document: {e}")
-        
+            logging.error(
+                f"Failed to save the document:{e}/n/n{traceback.format_exc()}"
+            )
+
         return filepath
 
-    def convert_docx_to_pdf(self, input_path: str, output_path: Optional[str] = None) -> str:
+    def convert_docx_to_pdf(
+        self, input_path: str, output_path: Optional[str] = None
+    ) -> str:
         """Converts a DOCX file to a PDF using pypandoc with 'xelatex' as the PDF engine.
 
         Args:
@@ -118,18 +121,24 @@ class StoryDocument:
             IOError: If the conversion fails or an unexpected output is generated.
         """
         if output_path is None or output_path == "":
-            output_path = input_path.replace('.docx', '.pdf')
+            output_path = input_path.replace(".docx", ".pdf")
 
         try:
             # Using XeLaTeX as the engine for better compatibility with Unicode and modern fonts
-            output = pypandoc.convert_file(input_path, 'pdf', outputfile=output_path, extra_args=['--pdf-engine=xelatex'])
+            output = pypandoc.convert_file(
+                input_path,
+                "pdf",
+                outputfile=output_path,
+                extra_args=["--pdf-engine=xelatex"],
+            )
             if output != "":
-                raise ValueError("Conversion output should be empty, but found output instead")
+                raise ValueError(
+                    "Conversion output should be empty, but found output instead"
+                )
             logging.info(f"Successfully converted {input_path} to {output_path}")
         except Exception as e:
-            error_message = f"Failed to convert {input_path} to PDF: {e}"
-            logging.error(error_message)
-            raise IOError(error_message)
-
+            logging.error(
+                f"Failed to convert {input_path} to PDF: {e}/n/n{traceback.format_exc()}"
+            )
+       
         return output_path
-

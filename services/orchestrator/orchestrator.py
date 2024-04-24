@@ -4,7 +4,7 @@ import time
 from word2number import w2n
 import copy
 import asyncio
-from typing import List, Tuple, Optional, Dict, Union, Any
+from typing import List, Tuple, Optional, Dict, Union, Any, NoReturn
 from omegaconf import DictConfig
 from hydra import initialize, compose
 from hydra.utils import instantiate
@@ -45,7 +45,8 @@ from services.utils.log_utils import get_logger
 from services.session_service import refresh_access_token
 
 from models.story_state import StoryState
-from models.story import Story, StoryData
+from models.story import Story
+from .story_manager import StoryManager
 from models.command import Command
 from models.response import ResponseStatus
 from models.message import Message, MessageSchema, OriginEnum, TypeEnum
@@ -108,12 +109,7 @@ class MagicTalesCoreOrchestrator:
         # Subfolders for storing various assets
         self.subfolders = {"images": "images", "chapters": "chapters"}
 
-        # Initialize story-related data with default or empty values
-        self.story_data = StoryData()
-
         self.chapter_generation_mechanism = None
-
-        self.latest_story_dir = None
 
         self.message_sender = message_sender
         self.session = session
@@ -123,13 +119,16 @@ class MagicTalesCoreOrchestrator:
         self.user_id = None
         self.user_dict = {}
         self.profile_id = None
-        self.story_id = None
+        self.latest_story = None
+
         self.new_token = None
 
-        self.token_refresh_interval = 30  # 2 minutes in seconds
+        self.token_refresh_interval = 120  # 2 minutes in seconds
         self.token_refresh_task = None
 
         self.chat_completed = False
+
+        self.story_manager = StoryManager(session=session)
 
         logger.info("MagicTales initialized.")
 
@@ -153,22 +152,14 @@ class MagicTalesCoreOrchestrator:
         # logger.info(f"token:{request.token}")  # DEBUG
 
         self.token_data = token_data
-        self.new_token = await refresh_access_token(request.token)
+        if not self.token_refresh_task:
+            self.new_token = await refresh_access_token(request.token)
+            self.token_refresh_task = asyncio.create_task(
+                self.refresh_token_periodically()
+            )
 
         # No matter what We will always have a user!!
         coming_user_id = token_data.get("user_id", None)
-
-        ## TEMP - DELETE ME:
-        ##################################################
-        # We re going to create a user if user_id is empty
-        if request.user_id is None:
-            # Create the new story on the DB
-            timestamp = time.strftime("%Y%m%d-%H%M%S%MS")
-            email = f"{timestamp}@temp_user.com"
-            new_user = User(username="TMP", email=email, password="1")
-            current_user = self._db_create_user(new_user)
-            coming_user_id = current_user.id
-        ##################################################
 
         # Send ACK if command received requires it
         if (
@@ -240,8 +231,13 @@ class MagicTalesCoreOrchestrator:
         )
         await self._db_add_message_to_session(conversation)
 
+        ## HANDLEING EACH COMMAND POSSIBILITY
         if request.command == Command.NEW_TALE:
-            asyncio.create_task(self._handle_new_tale(request))
+            asyncio.create_task(
+                self.check_last_story_and_allow_to_continue(self.user_id)
+            )
+            if self.latest_story is None:
+                asyncio.create_task(self._handle_new_tale())
 
         elif request.command == Command.SPIN_OFF:
             if not request.story_id:
@@ -298,7 +294,90 @@ class MagicTalesCoreOrchestrator:
             ai_response = await self._handle_user_message(request)
             await self.send_message_to_frontend(ai_response)
 
+        elif request.command == Command.USER_LOGGED_IN:
+            await self.check_last_story_and_allow_to_continue(self.user_id)
+
         logger.info(f"Processed command: {request.command}")
+
+    async def fetch_latest_story_for_user(self, user_id):
+        "Fetching the last Story the user interacted with"
+        try:
+            # Fetch all profiles for the user
+            profiles = await self.session.execute(
+                select(Profile).filter_by(user_id=user_id)
+            )
+            profiles = profiles.scalars().all()
+
+            latest_story = None
+            latest_date = None
+
+            # Iterate over each profile to find the latest story
+            for profile in profiles:
+                story = await self.session.execute(
+                    select(Story)
+                    .filter_by(profile_id=profile.id)
+                    .order_by(desc(Story.last_updated))
+                    .limit(1)
+                )
+                story = story.scalars().first()
+                if story and (latest_story is None or story.last_updated > latest_date):
+                    latest_story = story
+                    latest_date = story.last_updated
+
+            if latest_story:
+                logger.info(
+                    f"Latest story for user {user_id} is story ID {latest_story.id} from profile ID {latest_story.profile_id}"
+                )
+                return latest_story
+            else:
+                logger.info(f"No stories found for user {user_id}.")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching the last story for user {user_id}: {str(e)}")
+            return None
+
+    async def check_last_story_and_allow_to_continue(self, user_id):
+        self.latest_story = await self.fetch_latest_story_for_user(user_id)
+        if self.latest_story:
+            if (
+                self.latest_story.last_successful_step
+                == StoryState.FINAL_DOCUMENT_GENERATED.value
+            ):
+                # If the last story is completed, log this event and wait for further user actions.
+                logger.info(
+                    "Last story completed; waiting for user to start a new story."
+                )
+            else:
+                logger.info(f"Last story completed step was: {self.latest_story.last_successful_step.name}"
+                )
+                # Process to resume the story
+                await self._generate_and_send_update_message_for_user(
+                    self.config.updates_request_prompts.incomplete_story_found
+                )
+        else:
+            # Log that no story is available; await user action to start new.
+            logger.info(
+                "No story available for user; awaiting initiation of new story."
+            )
+
+    async def _resume_story(self):
+        """
+        Resumes the story generation process from the last saved state.
+        """
+        logger.info("Resuming story generation from the last saved state.")
+        # Assume latest_story_dir contains necessary data to resume story.
+        # You might need to adjust how you load story data.
+        await self.story_manager.load_story_manager(self.latest_story.id)
+        self.latest_story = None
+
+        if self.story_manager.story:
+            last_step = await self.story_manager.get_last_step()
+            logger.info(f"Resuming story generation from step: {str(last_step)}")
+            await self._process_story_creation_step(last_step)
+        else:
+            logger.info("No saved state found, awaiting user action.")
+            # let's make sure everything is clean if we really didn't recover any story.. just in case
+            self.story_manager.reset()
 
     async def send_working_command_to_frontend(self, is_working: bool):
         """
@@ -404,7 +483,7 @@ class MagicTalesCoreOrchestrator:
 
     # ---------------------------------------------- End getters methods ------------------------------------------
 
-    def create_progress_update(self, **kwargs) -> WSOutput:
+    async def create_progress_update(self, **kwargs) -> WSOutput:
         """
         Creates a progress update message in JSON format.
 
@@ -422,8 +501,8 @@ class MagicTalesCoreOrchestrator:
 
         progress_update = WSOutput(
             command=Command.STATUS_UPDATE,
-             token=self.new_token,
-        ) 
+            token=self.new_token,
+        )
 
         # Iterate through the keyword arguments and set them on the progress_update instance
         for key, value in kwargs.items():
@@ -464,6 +543,9 @@ class MagicTalesCoreOrchestrator:
         )
 
         if ai_message_for_system and isinstance(ai_message_for_system, WSInput):
+            logger.info(
+                f"AI Sent a COMMAND for the Orchestrator: {ai_message_for_system}"
+            )
             await self.handle_assistant_requests(ai_message_for_system)
 
         await self.send_working_command_to_frontend(False)
@@ -494,7 +576,7 @@ class MagicTalesCoreOrchestrator:
         self._reset()
         await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
 
-    async def _handle_new_tale(self, request: WSInput) -> None:
+    async def _handle_new_tale(self) -> None:
         """
         Handle the 'new-tale' command by retrieving user information from the database.
 
@@ -519,7 +601,7 @@ class MagicTalesCoreOrchestrator:
         """
         request_message = (
             request_message.replace("{user_info}", f"{self.user_dict}")
-            + " Use strictly the same language they were using with you in the last message or in the last conversation you recall."
+            + " Use strictly the same language that is being used in the conversation."
         )
         request_message = WSInput(
             command=Command.USER_MESSAGE, token=self.new_token, message=request_message
@@ -591,29 +673,29 @@ class MagicTalesCoreOrchestrator:
             and self.latest_story_dir is not None
         )
 
-    async def _resume_story(self) -> None:
-        """
-        Resumes the story generation process from the last saved state.
-        """
-        logger.info("Attempting to resume story generation from the last saved state.")
-        latest_story_dir = get_latest_story_directory(
-            self.config.output_artifacts.stories_root_dir
-        )
+    # async def _resume_story(self) -> None:
+    #     """
+    #     Resumes the story generation process from the last saved state.
+    #     """
+    #     logger.info("Attempting to resume story generation from the last saved state.")
+    #     latest_story_dir = get_latest_story_directory(
+    #         self.config.output_artifacts.stories_root_dir
+    #     )
 
-        self.story_data = StoryData.load_state(directory=latest_story_dir)
-        if self.story_data:
-            last_step = self.story_data.metadata.get(
-                "step", StoryState.USER_FACING_CHAT
-            )
-            if last_step is StoryState.FINAL_DOCUMENT_GENERATED:
-                logger.info(f"Last story was completed. We will create a new story.")
-                await self._start_new_story()
-            else:
-                logger.info(f"Resuming story generation from step: {last_step}")
-            await self._process_story_creation_step(last_step)
-        else:
-            logger.info("No saved state found, starting a new story.")
-            await self._start_new_story()
+    #     self.story_manager = InMemStoryData.load_state(directory=latest_story_dir)
+    #     if self.story_manager:
+    #         last_step = self.story_manager.metadata.get(
+    #             "step", StoryState.USER_FACING_CHAT
+    #         )
+    #         if last_step is StoryState.FINAL_DOCUMENT_GENERATED:
+    #             logger.info(f"Last story was completed. We will create a new story.")
+    #             await self._start_new_story()
+    #         else:
+    #             logger.info(f"Resuming story generation from step: {last_step}")
+    #         await self._process_story_creation_step(last_step)
+    #     else:
+    #         logger.info("No saved state found, starting a new story.")
+    #         await self._start_new_story()
 
     async def _process_story_creation_step(
         self, current_step: StoryState, **kwargs
@@ -624,12 +706,6 @@ class MagicTalesCoreOrchestrator:
         Args:
             current_step (StoryState): The current step to be processed.
         """
-        # Start the token refresh task when the story generation process starts
-        if current_step == StoryState.USER_FACING_CHAT:
-            self.token_refresh_task = asyncio.create_task(
-                self.refresh_token_periodically()
-            )
-
         while current_step is not StoryState.FINAL_DOCUMENT_GENERATED:
             method_name = self.steps_execution_mapping.get(current_step)
             if method_name and hasattr(self, method_name):
@@ -638,7 +714,7 @@ class MagicTalesCoreOrchestrator:
 
                     # Move to the next step
                     current_step = StoryState.next(current_step)
-                    self._update_and_serialize_step(current_step)
+                    await self.update_story_state(current_step)
                 except Exception as e:
                     logger.error(
                         f"Failed to execute step {method_name}: {traceback.format_exc()}"
@@ -679,25 +755,23 @@ class MagicTalesCoreOrchestrator:
         This method sets all internal state variables to their initial values.
         """
         try:
-            # Resetting the StoryData object to its initial state
-            self.story_data = StoryData()
-            self.story_data.story_folder = create_new_story_directory(
-                stories_root_dir=self.config.output_artifacts.stories_root_dir,
-                subfolders=self.subfolders,
-            )
-            self.story_data.images_subfolder = self.subfolders["images"]
-            # Log the reset action
-            logger.info("State has been successfully reset for a fresh run.")
+            # Resetting the StoryManager object to its initial state
+            self.story_manager.reset()
 
         except Exception as e:
             logger.error(
-                f"An error occurred while resetting the state: {traceback.format_exc()}"
+                f"An error occurred while resetting the story manager: {traceback.format_exc()}"
             )
 
-    def _update_and_serialize_step(self, step: StoryState) -> None:
-        self.story_data.metadata["step"] = step
-        self.story_data.save_state()
-        logger.info(f"Saved step: {step}")
+    async def update_story_state(self, step: StoryState) -> None:
+        """
+        Update the story's state to the given step and commit changes through StoryManager.
+        """
+        if self.story_manager and self.story_manager.story:
+            await self.story_manager.update_story_step(step)
+            logger.info(f"Saved step: {step.name}")
+        else:
+            raise Exception("No story manager or story loaded to update step.")
 
     async def _user_facing_chat(self) -> None:
         """
@@ -735,15 +809,6 @@ class MagicTalesCoreOrchestrator:
         logger.info(
             f"Processing AI message for Magic-Tales Orchestrator: {ai_message_for_system}"
         )
-        if (
-            ai_message_for_system.command == Command.CHAT_COMPLETED
-            and not self.chat_completed
-        ):
-            logger.info("Chat completed.")
-            self.profile_id = ai_message_for_system.profile_id
-            self.chat_assistant.chat_completed_event.set()
-            self.chat_completed = True
-            return
 
         if not isinstance(ai_message_for_system, WSInput):
             logger.info(
@@ -753,13 +818,49 @@ class MagicTalesCoreOrchestrator:
 
         command = ai_message_for_system.command
 
+        if command == Command.CHAT_COMPLETED and not self.chat_completed:
+            logger.info("Chat completed.")
+            self.profile_id = ai_message_for_system.profile_id
+            # Ensure there is a profile associated with the story
+            if not self.profile_id:
+                logging.error(
+                    "Profile ID is required but not provided by the assistant at 'chat_completed' event. Asking assistant to solve"
+                )
+                await self._generate_and_send_update_message_for_user(
+                    self.config.updates_request_prompts.no_profile_id
+                )
+                return
+
+            current_profile = await self.get_profile_by_id(self.profile_id)
+            if not current_profile:
+                logging.error(
+                    "No profile found with the given ID by the assistant at 'chat_completed' event. Asking assistant to solve"
+                )
+                await self._generate_and_send_update_message_for_user(
+                    self.config.updates_request_prompts.profile_id_does_not_exist
+                )
+                return
+
+            self.chat_assistant.chat_completed_event.set()
+            self.chat_completed = True
+            return
+
+        if command == Command.CONTINUE_STORY_CREATION:
+            if ai_message_for_system.message == "true":
+                asyncio.create_task(self._resume_story())
+            else:
+                asyncio.create_task(self._handle_new_tale())
+            return
+
         if command == Command.UPDATE_PROFILE:
             await self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.updating_profile
             )
             await self._db_update_profile_from_chat(ai_message_for_system)
             await self._fetch_user_data_and_update_knowledge_base()
-        elif command == Command.NEW_PROFILE:
+            return
+
+        if command == Command.NEW_PROFILE:
             await self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.creating_new_profile
             )
@@ -811,28 +912,6 @@ class MagicTalesCoreOrchestrator:
                 f"Failed to create profile: {e}/n/n{traceback.format_exc()}"
             )
 
-    async def _db_create_story(self, new_story: Story) -> Story:
-        """
-        Asynchronously creates a new story in the database.
-
-        Args:
-            new_story (Story): The story data to be added.
-
-        Returns:
-            Story: The newly created story with updated ID.
-        """
-        try:
-            self.session.add(new_story)
-            await self.session.commit()  # Commit the transaction to ensure the story is persisted
-            await self.session.refresh(
-                new_story
-            )  # Now refresh the object to synchronize with the database
-            return new_story
-        except SQLAlchemyError as e:
-            await self.session.rollback()  # Rollback in case of an error
-            # Log the exception here
-            raise Exception(f"Failed to create story: {e}\n\n{traceback.format_exc()}")
-
     async def _db_create_user(self, new_user: User) -> User:
         """
         Asynchronously creates a new User in the database.
@@ -864,7 +943,7 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             merged_data = await self.session.merge(data)
-            await self.session.flush()
+            # await self.session.flush()
             return merged_data
 
         except SQLAlchemyError as e:
@@ -936,46 +1015,6 @@ class MagicTalesCoreOrchestrator:
             raise Exception(
                 f"Failed to update profile: {e}/n/n{traceback.format_exc()}"
             )
-
-    async def _db_update_story_by_id(
-        self, story_id: str, data: Dict[str, Any]
-    ) -> Story:
-        """
-        Asynchronously updates a Story by ID.
-
-        Args:
-            story_id (str): The ID of the story to update.
-            data (Dict[str, Any]): A dictionary with story fields to update.
-
-        Returns:
-            Story: The updated story instance.
-
-        Raises:
-            StoryNotFoundError: If the story does not exist.
-            DatabaseError: If an error occurs during the database operation.
-        """
-        logger.debug(f"Attempting to update story {story_id} with data: {data}")
-        try:
-            story = await self.session.get(Story, story_id)
-            if not story:
-                logger.error(f"No story found with ID {story_id}")
-                raise (f"No story found with ID: {story_id}")
-
-            for key, value in data.items():
-                setattr(story, key, value)
-                logger.debug(f"Set {key} to {value} for story {story_id}")
-
-            self.session.add(story)
-            await self.session.commit()
-            logger.debug("Transaction committed successfully.")
-            return story
-
-        except NoResultFound:
-            logger.exception("Story not found.")
-            raise (f"No story found with ID: {story_id}")
-        except SQLAlchemyError as e:
-            logger.exception("Failed to update story due to a SQLAlchemy error.")
-            raise (f"Failed to update story: {e}")
 
     async def _db_link_user_with_conversations(self, session_ids: list):
         """
@@ -1117,46 +1156,48 @@ class MagicTalesCoreOrchestrator:
 
     async def _create_story_foundation_from_chat_key_elements(self, updates: Dict):
         """
-        Updates the database with the provided updates and refreshes the knowledge base.
-
+        Updates the database with the provided updates and refreshes the knowledge base based on chat key elements.
         Parameters:
         - updates: Dict[str, str, str] - The updates to apply, keyed by the type of update
           ('personality_profile', 'story_features', 'story_synopsis') and containing the new values.
         """
+        # This should never happen as we are making sure that the Assistant ALWAYS returns a profile_id at chat completion, but...
+        # Ensure there is a profile associated with the story
+        if not self.profile_id:
+            raise ValueError("Profile ID is required but not provided.")
 
-        # We should always have a user and a profile at this point!
+        # Assuming get_profile_by_id is an existing method that fetches the profile
         current_profile = await self.get_profile_by_id(self.profile_id)
-        if current_profile:
-            personality_profile = current_profile.details
-        else:  # TODO: This is a big problem. We need to ALWAYS have a profile to associate to a story. I can't think of who to fix this now.
-            raise (f"We do not have a profile to assign a story to!!")
+        if not current_profile:
+            raise ValueError(
+                "No profile found with the given ID. Cannot create a story."
+            )
 
-        self.story_data.personality_profile = personality_profile
+        # Collect details from updates
+        title = updates.get("story_title", "")
+        features = updates.get("story_features", "")
+        synopsis = updates.get("story_synopsis", "")
 
-        story_features = updates.get("story_features", "")
-        self.story_data.story_features = story_features
+        # Use StoryManager to create the story
+        stories_root_dir = os.path.join(
+            self.config.output_artifacts.stories_root_dir, "user_" + str(self.user_id)
+        )
+        story_folder = create_new_story_directory(
+            stories_root_dir, subfolders=self.subfolders
+        )
+        images_subfolder = self.subfolders["images"]
 
-        story_synopsis = updates.get("story_synopsis", "")
-        self.story_data.synopsis = story_synopsis
-
-        story_title = updates.get("story_title", "")
-        self.story_data.title = story_title
-
-        # Create the new story on the DB
-        new_story = Story(
+        await self.story_manager.create_story(
             profile_id=self.profile_id,
-            session_id=self.session.identity_key,
-            title=story_title,
-            features=story_features,
-            synopsis=story_synopsis,
-            last_successful_step=StoryState.USER_FACING_CHAT.value,
+            session_id=self.session.identity_key,  # Ensure this is correctly obtained
+            title=title,
+            features=features,
+            synopsis=synopsis,
+            story_folder=story_folder,
+            images_subfolder=images_subfolder,
         )
-        story = await self._db_create_story(new_story)
-        self.story_id = story.id
 
-        logger.info(
-            f"Story created on the Database with new story elements from chat. Story ID:{story.id}"
-        )
+        logger.info(f"Story created with ID: {self.story_manager.story.id}")
 
     async def _generate_chapter_title(self, chapter: str) -> str:
         """Generate a title for specific Chapter"""
@@ -1186,7 +1227,7 @@ class MagicTalesCoreOrchestrator:
         # Step 1: Determine Chapter Count
         # TODO: Make this chapter count more robust
         num_chapters = await self._determine_chapter_count(
-            self.story_data.story_features
+            self.story_manager.story.features
         )
         num_chapters = max(1, num_chapters)
         logger.info(f"Number of chapters: {num_chapters}")
@@ -1196,15 +1237,15 @@ class MagicTalesCoreOrchestrator:
 
         # Step 3: Chapter Generation
         chapters_folder = os.path.join(
-            self.story_data.story_folder, self.subfolders["chapters"]
+            self.story_manager.story.story_folder, self.subfolders["chapters"]
         )
         for chapter_number in range(1, num_chapters + 1):
             message = f"Generating chapter: {chapter_number} of {num_chapters}"
             logger.info(message)
 
-            update = self.create_progress_update(
+            update = await self.create_progress_update(
                 story_state=str(StoryState.STORY_GENERATION),
-                status=ResponseStatus.STARTED,                
+                status=ResponseStatus.STARTED,
                 progress_percent=(chapter_number / num_chapters) * 100,
                 message=message,
             )
@@ -1220,10 +1261,7 @@ class MagicTalesCoreOrchestrator:
             chapters.append({"title": chapter_title, "content": chapter_content})
             previous_chapter_content = chapter_content
 
-        self.story_data.chapters = chapters
-
-        # Update the story database record with the chapters
-        await self._db_update_story_by_id(self.story_id, {"chapters": chapters})
+        self.story_manager.in_mem_story_data.chapters = chapters
         return
 
     async def _determine_chapter_count(self, story_features: str) -> Union[int, None]:
@@ -1296,7 +1334,7 @@ class MagicTalesCoreOrchestrator:
         """
         self.chapter_generation_mechanism = ChapterGenerationMechanism(
             config=self.config,
-            story_data=self.story_data,
+            story_blueprint=self.story_manager.get_story_blueprint(),
             previous_chapter_content=previous_chapter_content,
         )
         best_chapter = self.chapter_generation_mechanism.create_chapter(
@@ -1326,7 +1364,7 @@ class MagicTalesCoreOrchestrator:
 
         message = f"Generating image prompts for all chapters."
         logger.info(message)
-        update = self.create_progress_update(
+        update = await self.create_progress_update(
             story_state=str(StoryState.IMAGE_PROMPT_GENERATION),
             status=ResponseStatus.STARTED,
             progress_percent=0,
@@ -1338,7 +1376,7 @@ class MagicTalesCoreOrchestrator:
         )
         all_chapter_prompts_and_new_chapters_annotated = (
             image_prompt_generation_mechanism.generate_image_prompts_for_all_chapters(
-                chapters=self.story_data.chapters
+                chapters=self.story_manager.in_mem_story_data.chapters
             )
         )
         await self._extract_post_processed_chapters(
@@ -1346,7 +1384,7 @@ class MagicTalesCoreOrchestrator:
         )
         logger.info(
             f"Image Prompts + processed chapters created"
-        )  # {self.story_data.image_prompts}")
+        )  # {self.story_manager.in_mem_story_data.image_prompts}")
 
         await self.send_working_command_to_frontend(False)
 
@@ -1354,7 +1392,7 @@ class MagicTalesCoreOrchestrator:
         self, all_chapter_prompts: Dict[int, Dict[str, Any]]
     ) -> None:
         """
-        Save the post-processed chapters, which include image annotations, into the StoryData structure.
+        Save the post-processed chapters, which include image annotations, into the InMemStoryData structure.
 
         Args:
             all_chapter_prompts: A dictionary containing image prompt data for each chapter.
@@ -1390,10 +1428,14 @@ class MagicTalesCoreOrchestrator:
                 }
             )
 
-        # Save the post-processed chapters to the StoryData structure.
-        self.story_data.post_processed_chapters = post_processed_chapters
-        self.story_data.image_prompt_generator_prompt_messages = image_prompt_messages
-        self.story_data.image_prompts = image_prompts
+        # Save the post-processed chapters to the InMemStoryData structure.
+        self.story_manager.in_mem_story_data.post_processed_chapters = (
+            post_processed_chapters
+        )
+        self.story_manager.in_mem_story_data.image_prompt_generator_prompt_messages = (
+            image_prompt_messages
+        )
+        self.story_manager.in_mem_story_data.image_prompts = image_prompts
 
     async def _generate_images(self) -> List[str]:
         """
@@ -1408,8 +1450,8 @@ class MagicTalesCoreOrchestrator:
 
         logger.info("Initiating image generation process.")
 
-        all_chapter_prompts = self.story_data.image_prompts
-        story_directory = self.story_data.story_folder
+        all_chapter_prompts = self.story_manager.in_mem_story_data.image_prompts
+        story_directory = self.story_manager.story.story_folder
 
         # Create a subdirectory for images within the specified story directory
         image_directory = os.path.join(story_directory, self.subfolders["images"])
@@ -1433,13 +1475,14 @@ class MagicTalesCoreOrchestrator:
             filename = f"Chapter_{chapter_number}_Image_{image_prompt_index}.png"
             message = f"Generating image for Chapter {chapter_number}, Image {image_prompt_index}"
             logger.info(message)
-            update = self.create_progress_update(
+            update = await self.create_progress_update(
                 story_state=str(StoryState.IMAGE_GENERATION),
                 status=ResponseStatus.STARTED,
                 progress_percent=0,
                 message=message,
             )
             await self.send_message_to_frontend(update)
+
             try:
                 generated_image_path = image_generator.generate_images(
                     [image_prompt], image_directory
@@ -1453,7 +1496,7 @@ class MagicTalesCoreOrchestrator:
                 else:
                     message = f"Failed to generate image for Chapter {chapter_number}, Image {image_prompt_index}. Skipping."
                     logger.error(message)
-                    update = self.create_progress_update(
+                    update = await self.create_progress_update(
                         story_state=str(StoryState.IMAGE_GENERATION),
                         status=ResponseStatus.STARTED,
                         progress_percent=0,
@@ -1463,7 +1506,7 @@ class MagicTalesCoreOrchestrator:
             except Exception as e:
                 message = f"An error occurred while processing Chapter {chapter_number}, Image {image_prompt_index}."
                 logger.error(f"{message}. Details:\n{traceback.format_exc()}")
-                update = self.create_progress_update(
+                update = await self.create_progress_update(
                     story_state=str(StoryState.IMAGE_GENERATION),
                     status=ResponseStatus.FAILED,
                     progress_percent=0,
@@ -1501,35 +1544,55 @@ class MagicTalesCoreOrchestrator:
         # Create a str of the filtered messages
         return "\n".join(filtered_messages)
 
-    async def _generate_final_document(self) -> None:
-        """Creates the final story document with associated images and saves it to the specified directory."""
+    async def _generate_final_document(self) -> NoReturn:
+        """
+        Asynchronously creates the final story document with associated images and saves it to the specified directory.
+        """
         message = f"Starting document generation..."
         logger.info(message)
-        update = self.create_progress_update(
-            story_state=str(StoryState.DOCUMENT_GENERATION),
-            status=ResponseStatus.STARTED,
-            progress_percent=0,
-            message=message,
-        )
-        await self.send_message_to_frontend(update)
 
-        story_document = StoryDocument(self.story_data)
-        story_document.create_document()  # Ensure this function exists and is error-proof
-        doc_filepath = story_document.save_document("story.docx")
-        final_pdf_file_path = story_document.convert_docx_to_pdf(doc_filepath)
+        try:
 
-        logger.info(f"Story document saved in: {final_pdf_file_path}")
+            update = await self.create_progress_update(
+                story_state=str(StoryState.DOCUMENT_GENERATION),
+                status=ResponseStatus.STARTED,
+                progress_percent=0,
+                message=message,
+            )
+            await self.send_message_to_frontend(update)
 
-        message = f"Story generation completed. Hope you enjoy it!"
-        logger.info(message)
-        update = self.create_progress_update(
-            command=Command.PROCESS_COMPLETED,    
-            story_state=str(StoryState.DOCUMENT_GENERATION),        
-            files=[final_pdf_file_path],
-            data={"story_id": self.story_id},
-            progress_percent=100,
-            message=message,
-        )
-        await self.send_working_command_to_frontend(False)
-        await self.send_message_to_frontend(update)
-        
+            story_document = StoryDocument(
+                title=self.story_manager.story.title,
+                chapters=self.story_manager.in_mem_story_data.post_processed_chapters,
+                image_filenames=self.story_manager.in_mem_story_data.image_filenames,
+                story_folder=self.story_manager.story.story_folder,
+                images_subfolder=self.story_manager.story.images_subfolder,
+            )
+
+            story_document.create_document()
+            doc_filepath = story_document.save_document("story.docx")
+            final_pdf_file_path = story_document.convert_docx_to_pdf(doc_filepath)
+
+            logger.info(f"Story document saved in: {final_pdf_file_path}")
+
+            message = "We really hope you enjoy this story!"
+            progress_percent = 100
+
+        except Exception as e:
+            message = "Failed to generate final document"
+            progress_percent = 0
+            logger.error(message, exc_info=True)
+            raise (f"{message}: {e}\n{traceback.format_exc()}")
+        finally:
+            http_base_url = "http://localhost:8000"
+            update = await self.create_progress_update(
+                command=Command.PROCESS_COMPLETED,
+                story_state=str(StoryState.DOCUMENT_GENERATION),
+                files=[http_base_url + final_pdf_file_path],
+                data={"story_id": self.story_manager.story.id},
+                progress_percent=progress_percent,
+                message=message,
+            )
+            await self.send_message_to_frontend(update)
+
+            await self.send_working_command_to_frontend(False)

@@ -6,7 +6,7 @@
 
 ### Story Information & Instructions ###
 General Story information:
-{story_data}
+{story_blueprint}
 
 ### Previous Chapter Context ###
 - **Narrative Continuity**: Use the previous chapter below to ensure continuity and alignment with the storyline.

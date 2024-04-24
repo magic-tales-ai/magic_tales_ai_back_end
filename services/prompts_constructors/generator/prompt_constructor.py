@@ -15,7 +15,7 @@ INPUT_DESCRIPTIONS = {
     "chapter_number": "The Chapter number we are working on (starting from 1).",
     "total_num_chapters": "The total number of chapters in the story.",
     "current_chapter_previous_version": "Current Chapter previous version (if not the first time attemting to generate this chapter).",
-    "story_data": "Information about the story, including the personality profile of the individual we are trying to help, the story features (theme, genre, audience, etc), the story synopsis that we ageed with the buyer of the story, and the story title.",
+    "story_blueprint": "Information about the story, including the personality profile of the individual we are trying to target this story for, the story features (theme, genre, audience, etc), the story synopsis that we ageed with the buyer of the story, and the story title.",
     "previous_chapter": "Previous chapter within the story for context and alignment with the global plot.",
     "critique": "This is a list of all the things that the critique asked to be improved and why(rationale).",
 }
@@ -127,7 +127,7 @@ def compose_system_message_and_create_output_parser() -> (
 
 
 def compose_message_for_LLM(
-    story_data: [Dict[str, str]],
+    story_blueprint: Dict[str, str],
     previous_chapter_content: str,
     input_info: Dict[str, str],
 ) -> HumanMessage:
@@ -153,7 +153,7 @@ def compose_message_for_LLM(
         current_chapter_previous_version=input_info.get(
             "chapter_generator_response_dict", {}
         ).get("content", ""),
-        story_data=story_data,
+        story_blueprint=story_blueprint,
         previous_chapter=previous_chapter_content,
         critique=input_info.get("chapter_critic_response_dict", {}),
     )

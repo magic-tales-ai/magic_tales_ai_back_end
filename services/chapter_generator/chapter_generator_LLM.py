@@ -22,7 +22,7 @@ class ChapterGeneratorLLM(ChapterBaseLLM):
         self,
         main_llm: BaseChatModel,
         parser_llm: BaseChatModel,
-        story_data: [Dict[str, str]],
+        story_blueprint: Dict[str, str],
         previous_chapter_content: str,
         num_outputs: Optional[int] = 1,
     ):
@@ -38,7 +38,7 @@ class ChapterGeneratorLLM(ChapterBaseLLM):
             main_llm,
             parser_llm,
             prompt_constructor,
-            story_data,
+            story_blueprint,
             previous_chapter_content,
             num_outputs,
         )

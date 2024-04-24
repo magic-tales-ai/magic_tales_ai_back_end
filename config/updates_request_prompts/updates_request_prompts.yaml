@@ -15,3 +15,9 @@ chat_info_extraction: "Let the user/n{user_info}/n know very concisely and affab
 generating_story_title: "Inform the user/n{user_info}/n very briefly that you're working hard on generating a captivating title. Be friendly and not too formal. Express genuine gratitude for their patience and pledge ongoing updates for an amazing experience."
 
 generating_story: "Share the exciting update with the user/n{user_info}/n very concisely and cordially that the AI team, with you as their guide, is starting to weave their story. Sincerely thank them for their patience and promise frequent updates for a truly fantastic experience."
+
+no_profile_id: "You forgot to provide a profile_id when you triggered the end of the chat. Make sure you find out from the user and from the files attached, what profile_id are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
+
+profile_id_does_not_exist: "The profile_id you provided does NOT match any record on the database. Make sure you find out from the user and from the files attached, what profile_id are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
+
+incomplete_story_found: "Very Briefly ASK the user/n{user_info}/n in a friendly manner that we found that their last story was not finished correctly (Somehow the creation process got interrupted) and we WANT to know if they want to continue where we left it off"

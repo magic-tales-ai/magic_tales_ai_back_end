@@ -1,5 +1,5 @@
 class Command:
-    # COMMANDS from USER to CORE-AI
+    # COMMANDS from FRONTEND to CORE-AI
     NEW_TALE = "new_tale"
     SPIN_OFF = "spin_off"
     UPDATE_PROFILE = "update_profile"
@@ -7,16 +7,20 @@ class Command:
     CONVERSATION_RECOVERY = "conversation_recovery"
     LINK_USER_WITH_CONVERSATIONS = "link_user_with_conversations"
     USER_MESSAGE = "user_message"
+    USER_LOGGED_IN = "user_logged_in"
 
     # COMMANDS from ORCH to USER
     # ACKNOWLEDGEMENT: REPEAT USER COMMAND and add ACK flag
     # ACKNOWLEDGEMENT = "ack" (not a real command)
 
-    # COMMANDS from CHAT to USER
+    # COMMANDS from CORE-AI to FRONTEND
     PROGRESS_UPDATE = "progress_update"
-    MESSAGE_FOR_HUMAN = "message_for_human"
-    CHAT_COMPLETED = "chat_done"
     STATUS_UPDATE = "status_update"
     IS_WORKING = "ai_is_working"
     DONE_WORKING = "ai_done_working"
     PROCESS_COMPLETED = "done"
+    MESSAGE_FOR_HUMAN = "message_for_human"
+
+    # COMMANDS from CHAT to CORE-AI
+    CHAT_COMPLETED = "chat_done"
+    CONTINUE_STORY_CREATION = "continue_story_creation"

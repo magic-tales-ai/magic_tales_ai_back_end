@@ -32,7 +32,7 @@ from .utils.viz_tree_utils import animate_mcts_evolution
 from .utils.chapter_tree import ChapterTree
 from .utils.chapter_node import ChapterNode
 from services.utils.log_utils import get_logger
-from models.story import StoryData
+from models.story import InMemStoryData
 
 # Get a logger instance for this module
 logger = get_logger(__name__)
@@ -48,7 +48,7 @@ class ChapterGenerationMechanism:
     def __init__(
         self,
         config: DictConfig,
-        story_data: StoryData,
+        story_blueprint: Dict[str, str],
         previous_chapter_content: str,
     ):
         # Set the same seed for
@@ -87,14 +87,14 @@ class ChapterGenerationMechanism:
         self.chapter_generator = ChapterGeneratorLLM(
             main_llm=main_llm,
             parser_llm=parser_llm,
-            story_data=story_data,
+            story_blueprint=story_blueprint,
             previous_chapter_content=previous_chapter_content,
             num_outputs=self.config.main_llm.num_responses,
         )
         self.chapter_critic = ChapterCriticLLM(
             main_llm=main_llm,
             parser_llm=parser_llm,
-            story_data=story_data,
+            story_blueprint=story_blueprint,
             previous_chapter_content=previous_chapter_content,
             num_outputs=self.config.parser_llm.num_responses,
         )

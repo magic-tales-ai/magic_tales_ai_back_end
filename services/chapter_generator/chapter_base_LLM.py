@@ -27,7 +27,7 @@ class ChapterBaseLLM(ABC):
         main_llm: BaseChatModel,
         parser_llm: BaseChatModel,
         prompt_constructor: ModuleType,
-        story_data: [Dict[str, str]],
+        story_blueprint: Dict[str, str],
         previous_chapter_content: str,
         num_outputs: Optional[int] = 1,
     ):
@@ -43,7 +43,7 @@ class ChapterBaseLLM(ABC):
         self.main_llm = main_llm
         self.parser_llm = parser_llm
         self.prompt_constructor = prompt_constructor
-        self.story_data = story_data
+        self.story_blueprint = story_blueprint
         self.previous_chapter_content = previous_chapter_content
         self.num_outputs = num_outputs
 
@@ -86,7 +86,7 @@ class ChapterBaseLLM(ABC):
             output_parser,
         ) = self.prompt_constructor.compose_system_message_and_create_output_parser()
         human_message = self.prompt_constructor.compose_message_for_LLM(
-            self.story_data, self.previous_chapter_content, input_info
+            self.story_blueprint, self.previous_chapter_content, input_info
         )
         messages = [system_message, human_message]
 
