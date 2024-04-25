@@ -103,28 +103,39 @@ class StoryManager:
             raise
 
     async def update_story_step(self, step: StoryState):
-        """Update the story's last successful step in the database."""
+        """
+        Update the story's last successful step in the database and save the in-memory story data.
+
+        Args:
+            step (StoryState): The step to update the story's last successful step to.
+
+        Raises:
+            RuntimeError: If no story is loaded.
+            Exception: If there are issues updating the database or saving the state.
+        """
         if not self.story:
             raise RuntimeError("No story loaded to update step.")
+
         try:
             self.story.last_successful_step = step.value
             await self.session.commit()
-            await self.session.refresh(self.story)
             logger.info(f"Updated story ID {self.story.id} to step: {step.name}")
-        except SQLAlchemyError as e:
-            logger.error(
-                f"Failed to update story step: {e}\n\n{traceback.format_exc()}"
-            )
-            await self.session.rollback()
-            raise
+            
+            # Refresh immediately after committing to sync state
+            await self.session.refresh(self.story)
+            
+            # Save the in-memory story data
+            try:
+                self.in_mem_story_data.save_state(self.story.story_folder)
+                logger.info("In-memory story data saved successfully.")
+            except Exception as e:
+                logger.error(f"Failed to save the in-memory story data: {e}\n\n{traceback.format_exc()}")
+                raise Exception("Failed to save in-memory story data.") from e
 
-        try:
-            self.in_mem_story_data.save_state(self.story.story_folder)
-        except Exception as e:
-            logger.error(
-                f"Failed to save the in_mem_story_data (.dill): {e}\n\n{traceback.format_exc()}"
-            )
-            raise
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to update story step: {e}\n\n{traceback.format_exc()}")
+            await self.session.rollback()
+            raise Exception("Database update failed, rolled back changes.") from e
 
     async def create_story(
         self,
@@ -175,6 +186,13 @@ class StoryManager:
             await self.session.rollback()  # Rollback in case of an error
             logger.error(f"Failed to create story: {e}\n\n{traceback.format_exc()}")
             raise
+
+    async def refresh(self):
+        if self.story:
+            await self.session.refresh(self.story)
+        
+        if self.profile:
+            await self.session.refresh(self.profile)
 
     async def get_story_blueprint(self) -> Dict[str, str]:
         """

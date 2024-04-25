@@ -222,6 +222,7 @@ def create_new_story_directory(
         top_level_story_folder = os.path.join(stories_root_dir, timestamp)
         os.makedirs(top_level_story_folder, exist_ok=True)
         logger.info(f"Created top-level story folder: {top_level_story_folder}")
+        images_subfolder = subfolders.get("images","images")
 
         # Create necessary subfolders
         for subfolder in subfolders.values():
@@ -229,7 +230,7 @@ def create_new_story_directory(
             os.makedirs(subfolder_path, exist_ok=True)
             logger.info(f"Created subfolder: {subfolder_path}")
 
-        return top_level_story_folder
+        return top_level_story_folder, images_subfolder
 
     except Exception as e:
         tb = traceback.format_exc()
