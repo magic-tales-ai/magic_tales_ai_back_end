@@ -40,9 +40,9 @@ class ChatAssistant(Assistant):
         """
         await self.chat_completed_event.wait()
 
-    def _extract_with_fallbacks(
+    def _parse_with_fallbacks(
         self, ai_message_content: str
-    ) -> Tuple[Optional[str], Optional[dict]]:
+    ) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
         """
         Attempts to directly parse AI message content as JSON and extract `message_for_human` and `message_for_system`.
 
@@ -53,6 +53,8 @@ class ChatAssistant(Assistant):
             A tuple containing potentially extracted `message_for_human` as str and
             `message_for_system` as a dict or None for each if not applicable or errors occur.
         """
+        message_for_human = None
+        message_for_system = None
         try:
             # Directly parse the AI message content as JSON
             ai_message_dict = json.loads(ai_message_content)
@@ -61,7 +63,7 @@ class ChatAssistant(Assistant):
                 "message_for_system"
             )  # This will be a dict or None
 
-            return message_for_human, message_for_system
+            return message_for_human, message_for_system, None
 
         except json.JSONDecodeError as e:
             try:
@@ -71,25 +73,27 @@ class ChatAssistant(Assistant):
                 message_for_system = re.search(
                     r'"message_for_system":\s*"([^"]*)"', ai_message_content
                 ).group(1)
-                return message_for_human, message_for_system
+                return message_for_human, message_for_system, None
             except Exception as e:
                 logger.error(
                     f"Failed to parse AI message content: {ai_message_content}/n/nError traceback:/n/n {traceback.format_exc()}"
                 )
-                retry_message = " I apologize, I encountered a hiccup processing your message. Could you rephrase or try again?"
-                message_for_human = (message_for_human or "") + retry_message
-                return message_for_human, None
+                #retry_message = " I apologize, I encountered a hiccup sending a command to our system. I'm going to try again. Bear with me."
+                # message_for_human = (message_for_human or "") + retry_message
+                return message_for_human, None, traceback.format_exc() 
 
     def _default_parsing(
         self, ai_message_content: str
-    ) -> Tuple[Optional[str], Optional[WSInput]]:
+    ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
         """
-        Robustly parses AI response content, extracting `message_for_human` and creating a WSInput instance for `message_for_system`.
+        Robustly parses AI response content, extracting `message_for_human`, creating a WSInput instance for `message_for_system AND pass over the error if it occurs.
         """
-        message_for_human, message_for_system_pre_processed = (
-            self._extract_with_fallbacks(ai_message_content)
+        message_for_human, message_for_system_pre_processed, error = (
+            self._parse_with_fallbacks(ai_message_content)
         )
-
+        if error:
+            return message_for_human, message_for_system_pre_processed, error
+        
         message_for_system = None
         if message_for_system_pre_processed:
             try:
@@ -109,8 +113,9 @@ class ChatAssistant(Assistant):
                 message_for_system = WSInput(**message_for_system_dict)
             except (json.JSONDecodeError, ValueError, TypeError) as e:
                 logger.error(f"Error creating WSInput from system message: {e}")
+                error = traceback.format_exc()
                 # User-friendly message in case of failure
-                retry_message = " I apologize, I encountered a hiccup processing a system request. Could you rephrase or try again?"
-                message_for_human = (message_for_human or "") + retry_message
+                #retry_message = " I apologize, I encountered a hiccup processing a system request. Could you rephrase or try again?"
+                # message_for_human = (message_for_human or "") + retry_message
 
-        return message_for_human, message_for_system
+        return message_for_human, message_for_system, error

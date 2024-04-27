@@ -107,15 +107,12 @@ class InMemStoryData:
                 f"Could not save InMemStoryData state to {filepath}.\nException: {e}\n{tb}"
             )
 
+    @staticmethod
     def load_state(
         story_folder: str, filename: str = STORY_DATA_FILENAME
-    ) -> Optional["InMemStoryData"]:
+    ) -> "InMemStoryData":
         """Load the state of a InMemStoryData instance from a file."""
-        if not story_folder:
-            return None
-
         filepath = os.path.join(story_folder, filename)
-
         if os.path.exists(filepath):
             try:
                 with open(filepath, "rb") as f:
@@ -123,14 +120,11 @@ class InMemStoryData:
                 logger.info(f"Successfully loaded InMemStoryData state from {filepath}")
                 return loaded_data
             except Exception as e:
-                tb = traceback.format_exc()
-                logger.error(
-                    f"Could not load InMemStoryData state from {filepath}.\nException: {e}\n{tb}"
-                )
-                return None
-        else:
-            logger.error(f"File {filepath} does not exist.")
-            return None
+                logger.error(f"Could not load InMemStoryData state from {filepath}. Error: {e}", exc_info=True)
+        
+        logger.info("Returning a new instance of InMemStoryData.")
+        return InMemStoryData()  # Return a new instance if the load fails
+
 
 
 def handle_custom_objects(obj):

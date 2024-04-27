@@ -39,6 +39,7 @@ class Assistant(ABC):
         self.openai_assistant = None
         self.openai_thread = None
         self.file_ids = []
+        self.retry_count = 0
         logger.info(f"{self.config.name} AI assistant class initialized.")
 
     def _validate_openai_api_key(self):
@@ -147,18 +148,30 @@ class Assistant(ABC):
         try:
             # Send the message to the OpenAI assistant
             await self._send_message_to_assistant(message)
+            
             # Initiate the assistant run and wait for completion
-            run = await self._wait_for_assistant_run_completion()
+            await self._wait_for_assistant_run_completion()
 
             # Retrieve the latest messages from the assistant
             messages_data = await self._retrieve_messages()
 
-            # Extract the latest AI response message
-            ai_message_for_human, ai_message_for_system = (
-                await self._process_ai_response(messages_data, parsing_method)
-            )
+            ai_message_for_human, ai_message_for_system, error = (
+                    await self._process_ai_response(messages_data, parsing_method)
+                )
 
-            return ai_message_for_human, ai_message_for_system
+            if error:
+                if self.retry_count < self.config.max_retries:
+                    self.retry_count += 1
+                    logger.info(f"Retrying due to error: {error}. Attempt {self.retry_count}")
+                    retry_message = f"Error encountered while procesing your response:\n{error}.\nPlease clarify or modify the respose. Pay attention to the JSON format required. Don't forget to extrictly use the same language used with the user. This is not the user. I'm the system and I'll always respond in EN"
+                    return await self.request_ai_response(retry_message, parsing_method)
+                else:
+                    logger.error("Maximum retries reached, unable to resolve the issue.")
+                    return "Unfortunately, I couldn't process your request due to repeated errors.", ""
+
+            # Reset retry count on successful processing
+            self.retry_count = 0            
+            return ai_message_for_human, ai_message_for_system                
 
         except Exception as e:
             logger.error(
@@ -228,7 +241,7 @@ class Assistant(ABC):
 
     async def _process_ai_response(
         self, messages_data: List, parsing_method: Optional[Callable] = None
-    ) -> Tuple[str, Any]:
+    ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
         """
         Processes the OpenAI assistant's latest response.
 
@@ -237,7 +250,7 @@ class Assistant(ABC):
             parsing_method (Callable, optional): A method to parse the AI response.
 
         Returns:
-            Tuple[str, Any]: A tuple of the AI's response for the human and the system command.
+            Tuple[str, WSInput, str]: A tuple of the AI's response for the human, the system command and any error that might have occured.
 
         Raises:
             Exception: If processing the response fails.
@@ -260,7 +273,7 @@ class Assistant(ABC):
     @abstractmethod
     def _default_parsing(
         self, ai_message_content: str
-    ) -> Tuple[Optional[str], Optional[WSInput]]:
+    ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
         """
         Robustly parses AI response content, extracting `message_for_human` and creating a WSInput instance for `message_for_system`.
         """

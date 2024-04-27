@@ -46,7 +46,7 @@ from services.session_service import refresh_access_token
 from models.story_state import StoryState
 from models.story import Story
 from .story_manager import StoryManager
-from .database_manger import DataManager
+from .database_manager import DatabaseManager
 from models.command import Command
 from models.response import ResponseStatus
 from models.message import Message, MessageSchema, OriginEnum, TypeEnum
@@ -129,7 +129,7 @@ class MagicTalesCoreOrchestrator:
 
         self.story_manager = StoryManager(session=session)
 
-        self.database_manger = DataManager(session=session)
+        self.database_manager = DatabaseManager(session=session)
 
         logger.info("MagicTales initialized.")
 
@@ -139,70 +139,74 @@ class MagicTalesCoreOrchestrator:
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
 
-    async def process_request(self, request: WSInput, token_data: dict) -> None:
+    async def process_frontend_request(self, frontend_request: WSInput, token_data: dict) -> None:
         """
         Process incoming commands/requests from the AI Core Interface Layer ().
 
         Args:
-            request (WSInput): Full command structure. Please look at the ICD docs for more details.
+            frontend_request (WSInput): Full command structure. Please look at the ICD docs for more details.
             token_data (dict): Token data from the AI Core Interface Layer.
 
         Returns:
             dict: Response data to be sent back to the AI Core Interface Layer.
         """
-        # logger.info(f"token:{request.token}")  # DEBUG
-
+        # logger.info(f"token:{frontend_request.token}")  # DEBUG        
+        
         self.token_data = token_data
         if not self.token_refresh_task:
-            self.new_token = await refresh_access_token(request.token)
+            self.new_token = await refresh_access_token(frontend_request.token)
             self.token_refresh_task = asyncio.create_task(
                 self.refresh_token_periodically()
             )
-
+                
         # No matter what We will always have a user!!
         coming_user_id = token_data.get("user_id", None)
 
         # Send ACK if command received requires it
         if (
-            request.command == Command.NEW_TALE
-            or request.command == Command.SPIN_OFF
-            or request.command == Command.UPDATE_PROFILE
+            frontend_request.command == Command.NEW_TALE
+            or frontend_request.command == Command.SPIN_OFF
+            or frontend_request.command == Command.UPDATE_PROFILE
+            or Command.LINK_USER_WITH_CONVERSATIONS
         ):
             await self.send_message_to_frontend(
-                WSOutput(command=request.command, token=self.new_token, ack=True)
+                WSOutput(command=frontend_request.command, token=self.new_token, ack=True)
             )
-
+        
         await self.send_working_command_to_frontend(True)
-
+        
         # There has been a change in the user_id
         if self.user_id != coming_user_id:
+            await self.send_message_to_frontend(
+                WSOutput(command=Command.MESSAGE_FOR_HUMAN, token=self.new_token, message="Calling your personalized Smarty Tales assistant...")
+            )            
             self.user_id = coming_user_id
-            self.user_dict = (await self.database_manger.fetch_user_by_id(self.user_id)).to_dict()
+            self.user_dict = (await self.database_manager.fetch_user_by_id(self.user_id)).to_dict()
 
-            user_message = self._generate_starting_message(try_mode=request.try_mode)
+            user_message = self._generate_starting_message(try_mode=frontend_request.try_mode)
             if self.user_dict:
                 logger.info(f"User {self.user_id} has been set.")
-
                 assistant_id = self.user_dict.get("assistant_id", None)
                 helper_id = self.user_dict.get("helper_id", None)
 
-                await self.chat_assistant.start_assistant(assistant_id)
-                await self._generate_and_send_update_message_for_user(user_message)
+                await self.chat_assistant.start_assistant(assistant_id)                
                 if assistant_id != self.chat_assistant.openai_assistant.id:
                     logger.warn(
                         f"User {self.user_id} had CHAT assistant {assistant_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
                     )
-                    await self.database_manger.update_user_record_by_id(
+                    await self.database_manager.update_user_record_by_id(
                         self.user_id,
                         {"assistant_id": self.chat_assistant.openai_assistant.id},
                     )
+                # We need an specific Assistant before we send any Message to the user    
+                await self._generate_and_send_update_message_for_user(user_message)
 
                 await self.helper_assistant.start_assistant(helper_id)
                 if helper_id != self.helper_assistant.openai_assistant.id:
                     logger.warn(
                         f"User {self.user_id} had HELPER assistant {helper_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
                     )
-                    await self.database_manger.update_user_record_by_id(
+                    await self.database_manager.update_user_record_by_id(
                         self.user_id,
                         {"helper_id": self.helper_assistant.openai_assistant.id},
                     )
@@ -211,98 +215,98 @@ class MagicTalesCoreOrchestrator:
                 await self._generate_and_send_update_message_for_user(
                     self.config.updates_request_prompts.after_feching_user_data
                 )
+                await self.story_manager.refresh()
             else:
                 logger.warn(f"User {self.user_id} has not been found.")
                 raise (f"User {self.user_id} has not been found.")
-
-        await self.send_working_command_to_frontend(False)
+        
 
         # CONVERSATION FOR ALL COMMANDS
         conversation = Message(
             user_id=self.user_id,
             session_id=self.websocket.uid,
-            command=request.command,
+            command=frontend_request.command,
             origin=OriginEnum.user,
             type=(
                 TypeEnum.chat
-                if request.command == Command.USER_MESSAGE
+                if frontend_request.command == Command.USER_MESSAGE
                 else TypeEnum.command
             ),
-            details=request.model_dump(),
+            details=frontend_request.model_dump(),
         )
-        await self.database_manger.add_message_to_session_record(conversation)
+        await self.database_manager.add_message_to_session_record(conversation)
+        await self.story_manager.refresh()
 
         ## HANDLEING EACH COMMAND POSSIBILITY
-        if request.command == Command.NEW_TALE:
-            asyncio.create_task(
-                self.check_last_story_and_allow_to_continue(self.user_id)
-            )
-            if self.latest_story is None:
-                asyncio.create_task(self._handle_new_tale())
+        if frontend_request.command == Command.NEW_TALE:            
+            if await self.check_last_story_finished_correctly(self.user_id):            
+                asyncio.create_task(self._handle_new_tale())            
 
-        elif request.command == Command.SPIN_OFF:
-            if not request.story_id:
+        elif frontend_request.command == Command.SPIN_OFF:
+            if not frontend_request.story_id:
                 raise Exception("story_id is required for spin-off")
-            asyncio.create_task(self._handle_spin_off_tale(request))
+            asyncio.create_task(self._handle_spin_off_tale(frontend_request))
 
-        elif request.command == Command.UPDATE_PROFILE:
-            if not request.profile_id:
+        elif frontend_request.command == Command.UPDATE_PROFILE:
+            if not frontend_request.profile_id:
                 raise Exception("profile_id is required for update profile")
-
-            await self.send_working_command_to_frontend(True)
-            asyncio.create_task(self._handle_user_request_update_profile(request))
+            
+            asyncio.create_task(self._handle_user_request_update_profile(frontend_request))
 
         # CONVERSATION RECOVERY
         # this command is necesary to recover a current and not finished conversation
         # the recover is based on CHAT TABLE records
         #
-        elif request.command == Command.CONVERSATION_RECOVERY:
+        elif frontend_request.command == Command.CONVERSATION_RECOVERY:
             if not self.websocket.uid:
                 raise Exception(
                     "uid is required for conversation recovery"
                 )  # SESSION/CONVERSATION ID
 
             # read current conversation (CHAT ID)
-            conversations = await self.database_manger.get_messages_by_session_id(self.websocket.uid)
+            conversations = await self.database_manager.fetch_messages_for_session(self.websocket.uid)
             conversation_dicts = [
                 MessageSchema().dump(conversation) for conversation in conversations
             ]
             # send full conversation to CLIENTE/USER (to rebuild it)
             await self.send_message_to_frontend(
                 WSOutput(
-                    command=request.command,
+                    command=frontend_request.command,
                     token=self.new_token,
                     data={"conversations": conversation_dicts},
                 )
             )
 
         # ASSOCIATE USER WITH CONVERSATIONS
-        elif request.command == Command.LINK_USER_WITH_CONVERSATIONS:
+        elif frontend_request.command == Command.LINK_USER_WITH_CONVERSATIONS:
             if not self.user_id:
                 raise Exception("user_id is required for link user with conversations")
 
-            if not request.session_ids:
+            if not frontend_request.session_ids:
                 raise Exception(
                     "session_ids is required for link user with conversations"
                 )  # SESSION/CONVERSATION ID
 
-            await self.database_manger.link_user_with_conversations_by_session_ids(request.session_ids)
-            await self.send_message_to_frontend(
-                WSOutput(command=request.command, token=self.new_token, ack=True)
-            )
+            await self.database_manager.link_user_with_conversations_by_session_ids(frontend_request.session_ids)            
+            await self.story_manager.refresh()
 
-        elif request.command == Command.USER_MESSAGE:
-            ai_response = await self._handle_user_message(request)
-            await self.send_message_to_frontend(ai_response)
+        elif frontend_request.command == Command.USER_MESSAGE:
+            # asyncio.create_task(self._handle_user_message(frontend_request))
+            await self._handle_user_message(frontend_request)
+            
 
-        elif request.command == Command.USER_LOGGED_IN:
-            await self.check_last_story_and_allow_to_continue(self.user_id)
-
-        logger.info(f"Processed command: {request.command}")
+        elif frontend_request.command == Command.USER_LOGGED_IN:
+            # asyncio.create_task(self.check_last_story_finished_correctly(self.user_id))            
+            await self.check_last_story_finished_correctly(self.user_id)
+                
+        
+        logger.info(f"Processed command: {frontend_request.command}")
+        
+        await self.send_working_command_to_frontend(False)
 
     async def fetch_latest_story_for_user(self, user_id):
         """
-        Fetches the latest story that the user interacted with by leveraging the DataManager to reduce direct database calls.
+        Fetches the latest story that the user interacted with by leveraging the DatabaseManager to reduce direct database calls.
 
         Args:
             user_id (int): The user ID whose latest story is being fetched.
@@ -314,8 +318,8 @@ class MagicTalesCoreOrchestrator:
             Exception: If there is an error during the database operation or processing.
         """
         try:
-            # Fetch all stories for the user using the DataManager
-            stories = await self.database_manger.fetch_stories_for_user(user_id=user_id)
+            # Fetch all stories for the user using the DatabaseManager
+            stories = await self.database_manager.fetch_stories_for_user(user_id=user_id)
 
             # Determine the latest story based on the 'last_updated' field
             latest_story = max(stories, key=lambda story: story.last_updated, default=None)
@@ -331,7 +335,7 @@ class MagicTalesCoreOrchestrator:
             logger.error(f"Error fetching the last story for user {user_id}: {str(e)}")
             return None
 
-    async def check_last_story_and_allow_to_continue(self, user_id):
+    async def check_last_story_finished_correctly(self, user_id) -> bool:
         self.latest_story = await self.fetch_latest_story_for_user(user_id)
         if self.latest_story:
             if (
@@ -342,37 +346,53 @@ class MagicTalesCoreOrchestrator:
                 logger.info(
                     "Last story completed; waiting for user to start a new story."
                 )
+                return True
             else:
-                logger.info(f"Last story completed step was: {self.latest_story.last_successful_step.name}"
+                logger.info(f"Last story completed step was: {StoryState(self.latest_story.last_successful_step).name}"
                 )
                 # Process to resume the story
                 await self._generate_and_send_update_message_for_user(
                     self.config.updates_request_prompts.incomplete_story_found
                 )
+                return False
         else:
             # Log that no story is available; await user action to start new.
             logger.info(
                 "No story available for user; awaiting initiation of new story."
             )
+            return False
 
     async def _resume_story(self):
         """
-        Resumes the story generation process from the last saved state.
+        Resumes the story generation process from the last saved state, ensuring that the database session is correctly managed.
         """
         logger.info("Resuming story generation from the last saved state.")
-        # Assume latest_story_dir contains necessary data to resume story.
-        # You might need to adjust how you load story data.
-        await self.story_manager.load_story_manager(self.latest_story.id)
-        self.latest_story = None
 
-        if self.story_manager.story:
-            last_step = await self.story_manager.get_last_step()
-            logger.info(f"Resuming story generation from step: {str(last_step)}")
-            await self._process_story_creation_step(last_step)
-        else:
-            logger.info("No saved state found, awaiting user action.")
-            # let's make sure everything is clean if we really didn't recover any story.. just in case
-            self.story_manager.reset()
+        # Check if the session is still open and valid; if not, manage it here or ensure it's managed externally
+        if not self.session:
+            logger.error("Session is closed or invalid when trying to resume the story.")
+            return
+
+        try:
+            # Load story using the current session
+            await self.session.refresh(self.latest_story)
+            await self.story_manager.load_story_manager(self.latest_story.id)
+            self.latest_story = None
+
+            if self.story_manager.story:
+                last_step = await self.story_manager.get_last_step()
+                logger.info(f"Resuming story generation from step: {str(last_step)}")
+                await self._process_story_creation_step(last_step)
+            else:
+                logger.info("No saved state found, awaiting user action.")
+                # Clean up if no story data was found
+                self.story_manager.reset()
+
+        except Exception as e:
+            logger.error(f"Failed to resume story due to: {e}")
+            # Handle session rollback if needed
+            await self.story_manager.session.rollback()
+
 
     async def send_working_command_to_frontend(self, is_working: bool):
         """
@@ -417,7 +437,8 @@ class MagicTalesCoreOrchestrator:
             details=details_serialized,
         )
 
-        await self.database_manger.add_message_to_session_record(message)
+        await self.database_manager.add_message_to_session_record(message)
+        await self.story_manager.refresh()
     
 
     async def create_progress_update(self, **kwargs) -> WSOutput:
@@ -450,7 +471,7 @@ class MagicTalesCoreOrchestrator:
 
         return progress_update
 
-    async def _handle_user_message(self, request: WSInput) -> WSOutput:
+    async def _handle_user_message(self, request: WSInput) -> None:
         """
         Handle a user message by sending it to the chat assistant and processing the response.
 
@@ -459,12 +480,11 @@ class MagicTalesCoreOrchestrator:
             websocket (str): Unique identifier of the client.
 
         Returns:
-            WSOutput: response to be sent back to the AI Core Interface Layer.
+            None
         """
         user_message = request.message
 
-        # Generate AI response for the user message
-        await self.send_working_command_to_frontend(True)
+        # Generate AI response for the user message        
         ai_message_for_human, ai_message_for_system = (
             await self.chat_assistant.request_ai_response(message=user_message)
         )
@@ -472,22 +492,20 @@ class MagicTalesCoreOrchestrator:
         logger.info(f"AI response for human/user: {ai_message_for_human}")
 
         # Construct a response to be sent by the AI Core Interface Layer to the Front End
-        response = WSOutput(
+        ai_response = WSOutput(
             command=Command.MESSAGE_FOR_HUMAN,
             message=ai_message_for_human,  # AI-generated response to be displayed to the user
             token=self.new_token,
             working=False,  # Indicates that the response is ready
         )
-
+        await self.send_message_to_frontend(ai_response)        
+        
         if ai_message_for_system and isinstance(ai_message_for_system, WSInput):
             logger.info(
                 f"AI Sent a COMMAND for the Orchestrator: {ai_message_for_system}"
             )
-            await self.handle_assistant_requests(ai_message_for_system)
-
-        await self.send_working_command_to_frontend(False)
-
-        return response
+            asyncio.create_task(self.handle_assistant_requests(ai_message_for_system))
+        
 
     async def _handle_user_request_update_profile(self, request: WSInput) -> None:
         """
@@ -543,9 +561,9 @@ class MagicTalesCoreOrchestrator:
         request_message = WSInput(
             command=Command.USER_MESSAGE, token=self.new_token, message=request_message
         )
-        ai_response = await self._handle_user_message(request_message)
+        # asyncio.create_task(self._handle_user_message(request_message))
+        await self._handle_user_message(request_message)
 
-        await self.send_message_to_frontend(ai_response)
 
     async def _fetch_user_data_and_update_knowledge_base(self) -> None:
         """
@@ -582,7 +600,7 @@ class MagicTalesCoreOrchestrator:
             Tuple[User, List[Profile], List[Story]]: A tuple containing user information, profiles, and stories.
         """
         # Fetch user information
-        user = await self.database_manger.fetch_user_by_id(self.user_id)
+        user = await self.database_manager.fetch_user_by_id(self.user_id)
 
         # Fetch profiles associated with the user
         profile_result = await self.session.execute(
@@ -591,7 +609,7 @@ class MagicTalesCoreOrchestrator:
         profiles = profile_result.scalars().all()
 
         # Fetch stories associated with the user
-        stories = await self.database_manger.fetch_stories_for_user(self.user_id)
+        stories = await self.database_manager.fetch_stories_for_user(self.user_id)
 
         return user, profiles, stories
 
@@ -608,31 +626,7 @@ class MagicTalesCoreOrchestrator:
         return (
             self.config.output_artifacts.continue_where_we_left_of
             and self.latest_story_dir is not None
-        )
-
-    # async def _resume_story(self) -> None:
-    #     """
-    #     Resumes the story generation process from the last saved state.
-    #     """
-    #     logger.info("Attempting to resume story generation from the last saved state.")
-    #     latest_story_dir = get_latest_story_directory(
-    #         self.config.output_artifacts.stories_root_dir
-    #     )
-
-    #     self.story_manager = InMemStoryData.load_state(directory=latest_story_dir)
-    #     if self.story_manager:
-    #         last_step = self.story_manager.metadata.get(
-    #             "step", StoryState.USER_FACING_CHAT
-    #         )
-    #         if last_step is StoryState.FINAL_DOCUMENT_GENERATED:
-    #             logger.info(f"Last story was completed. We will create a new story.")
-    #             await self._start_new_story()
-    #         else:
-    #             logger.info(f"Resuming story generation from step: {last_step}")
-    #         await self._process_story_creation_step(last_step)
-    #     else:
-    #         logger.info("No saved state found, starting a new story.")
-    #         await self._start_new_story()
+        )    
 
     async def _process_story_creation_step(
         self, current_step: StoryState, **kwargs
@@ -712,7 +706,8 @@ class MagicTalesCoreOrchestrator:
 
         Raises:
             ValueError: If the story manager or story is not loaded.
-        """
+        """        
+
         if not self.story_manager or not self.story_manager.story:
             error_msg = "No story manager or story loaded to update step."
             logger.error(error_msg)
@@ -768,7 +763,7 @@ class MagicTalesCoreOrchestrator:
 
         command = ai_message_for_system.command
 
-        if command == Command.CHAT_COMPLETED and not self.chat_completed:
+        if command == Command.CHAT_COMPLETED: # and not self.chat_completed:
             logger.info("Chat completed.")
             self.profile_id = ai_message_for_system.profile_id
             # Ensure there is a profile associated with the story
@@ -781,7 +776,7 @@ class MagicTalesCoreOrchestrator:
                 )
                 return
 
-            current_profile = await self.database_manger.fetch_profile_by_id(self.profile_id)
+            current_profile = await self.database_manager.fetch_profile_by_id(self.profile_id)
             if not current_profile:
                 logging.error(
                     "No profile found with the given ID by the assistant at 'chat_completed' event. Asking assistant to solve"
@@ -797,7 +792,8 @@ class MagicTalesCoreOrchestrator:
 
         if command == Command.CONTINUE_STORY_CREATION:
             if ai_message_for_system.message == "true":
-                asyncio.create_task(self._resume_story())
+                # asyncio.create_task(self._resume_story())
+                await self._resume_story()
             else:
                 asyncio.create_task(self._handle_new_tale())
             return
@@ -814,8 +810,9 @@ class MagicTalesCoreOrchestrator:
             await self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.creating_new_profile
             )
-            await self.database_manger.create_profile_from_chat_details(ai_message_for_system)
+            await self.database_manager.create_profile_from_chat_details(self.user_id, ai_message_for_system.message)
             await self._fetch_user_data_and_update_knowledge_base()    
+            await self.story_manager.refresh()
 
     async def _update_profile_from_chat(self, ai_message_for_system: WSInput):
         """
@@ -829,7 +826,7 @@ class MagicTalesCoreOrchestrator:
         logger.info(f"profile UPDATES:\n{updates}")
 
         # Fetch existing profile details
-        current_profile = await self.database_manger.fetch_profile_by_id(profile_id)
+        current_profile = await self.database_manager.fetch_profile_by_id(profile_id)
         existing_details = current_profile.details if current_profile else ""
         logger.info(f"current profile details:\n{existing_details}")
 
@@ -837,7 +834,8 @@ class MagicTalesCoreOrchestrator:
         merged_details = await self.merge_profile_updates(existing_details, updates)
         logger.info(f"merged profile details:\n{merged_details}")
 
-        await self.database_manger.update_profile_record_by_id(profile_id, {"details": merged_details})
+        await self.database_manager.update_profile_record_by_id(profile_id, {"details": merged_details})
+        await self.story_manager.refresh()
 
     async def merge_profile_updates(self, existing_details: str, updates: str):
         """
@@ -954,8 +952,8 @@ class MagicTalesCoreOrchestrator:
             logger.error("Profile ID is missing but required for story creation.")
             raise ValueError("Profile ID is required but not provided.")
 
-        # Fetch the current profile using the DataManager class
-        current_profile = await self.database_manger.fetch_profile_by_id(self.profile_id)
+        # Fetch the current profile using the DatabaseManager class
+        current_profile = await self.database_manager.fetch_profile_by_id(self.profile_id)
         if not current_profile:
             logger.error(f"No profile found for ID: {self.profile_id}")
             raise ValueError("No profile found with the given ID. Cannot create a story.")
@@ -1012,6 +1010,8 @@ class MagicTalesCoreOrchestrator:
         Resturns:
             None
         """
+        self.story_manager.refresh()
+
         await self._generate_and_send_update_message_for_user(
             self.config.updates_request_prompts.generating_story
         )
@@ -1127,6 +1127,8 @@ class MagicTalesCoreOrchestrator:
         Returns:
             tuple: The generated chapter title and content.
         """
+        self.story_manager.refresh()
+
         self.chapter_generation_mechanism = ChapterGenerationMechanism(
             config=self.config,
             story_blueprint=self.story_manager.get_story_blueprint(),
@@ -1179,9 +1181,7 @@ class MagicTalesCoreOrchestrator:
         )
         logger.info(
             f"Image Prompts + processed chapters created"
-        )  # {self.story_manager.in_mem_story_data.image_prompts}")
-
-        await self.send_working_command_to_frontend(False)
+        )  # {self.story_manager.in_mem_story_data.image_prompts}")        
 
     async def _extract_post_processed_chapters(
         self, all_chapter_prompts: Dict[int, Dict[str, Any]]
@@ -1244,6 +1244,8 @@ class MagicTalesCoreOrchestrator:
         """
 
         logger.info("Initiating image generation process.")
+
+        self.story_manager.refresh()
 
         all_chapter_prompts = self.story_manager.in_mem_story_data.image_prompts
         story_directory = self.story_manager.story.story_folder
@@ -1345,6 +1347,8 @@ class MagicTalesCoreOrchestrator:
         """
         message = f"Starting document generation..."
         logger.info(message)
+
+        self.story_manager.refresh()
 
         try:
 

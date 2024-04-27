@@ -118,11 +118,12 @@ class StoryManager:
 
         try:
             self.story.last_successful_step = step.value
-            await self.session.commit()
-            logger.info(f"Updated story ID {self.story.id} to step: {step.name}")
+            await self.session.commit()            
             
             # Refresh immediately after committing to sync state
             await self.session.refresh(self.story)
+
+            logger.info(f"Updated story ID {self.story.id} to step: {step.name}")
             
             # Save the in-memory story data
             try:

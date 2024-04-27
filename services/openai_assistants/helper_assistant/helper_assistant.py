@@ -18,9 +18,9 @@ class HelperAssistant(Assistant):
 
     def _default_parsing(
         self, ai_message_content: str
-    ) -> Tuple[Optional[str], Optional[WSInput]]:
+    ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
         """
-        Robustly parses AI response content, extracting `message_for_human` and creating a WSInput instance for `message_for_system`.
+        Robustly parses AI response content, extracting `message_for_human`, creating a WSInput instance for `message_for_system AND pass over the error if it occurs.
         """
 
-        return ai_message_content, None
+        return ai_message_content, None, None

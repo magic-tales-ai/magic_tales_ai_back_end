@@ -62,7 +62,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     # Process the command with the orchestrator
-                    await orchestrator.process_request(request, token_data)
+                    await orchestrator.process_frontend_request(request, token_data)
 
                 except WebSocketDisconnect:
                     print("WebSocket disconnected by the server")
