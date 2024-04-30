@@ -3,14 +3,13 @@ import markdown
 import json
 import logging
 import traceback
-from typing import Dict
+from typing import Dict, Optional
+import datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.exc import SQLAlchemyError, NoResultFound
 from models.story import Story, InMemStoryData
 from models.profile import Profile
 from models.story_state import StoryState
+from .database_manager import DatabaseManager
 from services.utils.log_utils import get_logger
 
 # Set up logging
@@ -20,22 +19,22 @@ logger = get_logger(__name__)
 
 
 class StoryManager:
-    def __init__(self, session: AsyncSession):
-        self.session = session
-        self.profile: Profile = None
-        self.story: Story = None
+    def __init__(self, db_manager: DatabaseManager):
+        self.db_manager = db_manager
+        self.profile: Optional[Profile] = None
+        self.story: Optional[Story] = None
         self.in_mem_story_data = InMemStoryData()
 
-    async def load_story_manager(self, story_id: int):
+    async def load_story(self, story_id: int):
         """Load story along with its chapters and images from the database."""
 
         try:
             logger.info("Loading all data into the story manager")
-            self.story = await self.session.get(Story, story_id)
+            self.story = await self.db_manager.fetch_story_by_id(story_id)
             if not self.story:
                 raise ValueError(f"No story found with ID {story_id}")
 
-            self.profile = await self.session.get(Profile, self.story.profile_id)
+            self.profile = await self.db_manager.fetch_profile_by_id(self.story.profile_id)
             if not self.profile:
                 raise ValueError(f"No profile found with ID {self.story.profile_id}")
 
@@ -47,7 +46,7 @@ class StoryManager:
             )
             raise
 
-    async def get_last_step(self):
+    async def get_last_step(self) -> StoryState:
         """Function to get the last successful step as a StoryState enum."""
         try:
             # Check if the last_successful_step is a valid StoryState
@@ -61,9 +60,9 @@ class StoryManager:
         self.story: Story = None
         self.profile: Profile = None
         self.in_mem_story_data = InMemStoryData()
-        await self.session.commit()  # Ensure any pending transactions are committed.
+        
 
-    async def update_story(self, updates: dict):
+    async def update_story(self, updates: Dict[str, any]):
         """
         Update the story's data based on provided updates dictionary.
 
@@ -76,31 +75,17 @@ class StoryManager:
         """
         if not self.story:
             raise RuntimeError("No story loaded to update.")
-
-        # Log the intended updates for audit and debugging purposes
-        logger.info(
-            f"Attempting to update story ID {self.story.id} with changes: {updates}"
-        )
-
         try:
-            for key, value in updates.items():
-                if hasattr(self.story, key):
-                    setattr(self.story, key, value)
-                else:
-                    logger.error(
-                        f"Attempted to update non-existent attribute '{key}' on Story."
-                    )
-                    raise AttributeError(f"Story has no attribute '{key}'")
-
-            await self.session.commit()
-            await self.session.refresh(self.story)
+            logger.info(f"Attempting to update story ID {self.story.id} with changes: {updates}")
+            updates['last_updated'] = datetime.datetime.now(datetime.UTC)
+            await self.db_manager.update_story_record_by_id(self.story.id, updates)
             logger.info(f"Story ID {self.story.id} successfully updated.")
-        except SQLAlchemyError as e:
-            logger.error(
-                f"Failed to update story ID {self.story.id}: {e}\n\n{traceback.format_exc()}"
-            )
-            await self.session.rollback()
-            raise
+        except Exception as e:
+                logger.error(
+                    f"Failed to update the story: {e}\n\n{traceback.format_exc()}"
+                )
+                raise Exception("Failed to update the story.") from e
+
 
     async def update_story_step(self, step: StoryState):
         """
@@ -117,31 +102,33 @@ class StoryManager:
             raise RuntimeError("No story loaded to update step.")
 
         try:
-            self.story.last_successful_step = step.value
-            await self.session.commit()            
-            
-            # Refresh immediately after committing to sync state
-            await self.session.refresh(self.story)
-
+            updates = {
+                'last_successful_step': step.value,
+                'last_updated': datetime.datetime.now(datetime.UTC)
+            }
+            await self.db_manager.update_story_record_by_id(self.story.id, updates)
             logger.info(f"Updated story ID {self.story.id} to step: {step.name}")
-            
+
             # Save the in-memory story data
             try:
                 self.in_mem_story_data.save_state(self.story.story_folder)
                 logger.info("In-memory story data saved successfully.")
             except Exception as e:
-                logger.error(f"Failed to save the in-memory story data: {e}\n\n{traceback.format_exc()}")
+                logger.error(
+                    f"Failed to save the in-memory story data: {e}\n\n{traceback.format_exc()}"
+                )
                 raise Exception("Failed to save in-memory story data.") from e
 
-        except SQLAlchemyError as e:
-            logger.error(f"Failed to update story step: {e}\n\n{traceback.format_exc()}")
-            await self.session.rollback()
-            raise Exception("Database update failed, rolled back changes.") from e
+        except Exception as e:
+                logger.error(
+                    f"Failed to update the story step: {e}\n\n{traceback.format_exc()}"
+                )
+                raise Exception("Failed to update the story step.") from e
 
     async def create_story(
         self,
         profile_id: int,
-        session_id: str,
+        ws_session_uid: str,
         title: str,
         features: str,
         synopsis: str,
@@ -153,7 +140,7 @@ class StoryManager:
 
         Args:
             profile_id (int): ID of the profile to which the story belongs.
-            session_id (str): Session identifier for the creation context.
+            ws_session_uid (str): WebSocket Session identifier for the creation context.
             title (str): Title of the story.
             features (str): Descriptive features of the story.
             synopsis (str): Synopsis of the story.
@@ -167,33 +154,25 @@ class StoryManager:
             Exception: If the database transaction fails.
         """
         try:
-            new_story = Story(
-                profile_id=profile_id,
-                session_id=session_id,
-                title=title,
-                features=features,
-                synopsis=synopsis,
-                story_folder=story_folder,
-                images_subfolder=images_subfolder,
-                last_successful_step=StoryState.USER_FACING_CHAT.value,
-            )
-
-            self.session.add(new_story)
-            await self.session.commit()  # Commit the transaction to ensure the story is persisted
-            await self.session.refresh(new_story)
+            new_story = await self.db_manager.create_story(profile_id, ws_session_uid, title, features, synopsis, story_folder, images_subfolder)
+            self.load_story(new_story.id)            
             self.story = new_story  # Update the instance variable to the new story
             logger.info(f"Created new story with ID {self.story.id}")
-        except SQLAlchemyError as e:
-            await self.session.rollback()  # Rollback in case of an error
-            logger.error(f"Failed to create story: {e}\n\n{traceback.format_exc()}")
-            raise
+
+        except Exception as e:
+                logger.error(
+                    f"Failed to create a new story: {e}\n\n{traceback.format_exc()}"
+                )
+                raise Exception("Failed to create a new story") from e
+
 
     async def refresh(self):
         if self.story:
-            await self.session.refresh(self.story)
-        
+            await self.db_manager.refresh_story(self.story)
+            logging.info("Story refreshed on the Story Manager")
         if self.profile:
-            await self.session.refresh(self.profile)
+            await self.db_manager.refresh_profile(self.profile)
+            logging.info("Profile refreshed on the Story Manager")
 
     async def get_story_blueprint(self) -> Dict[str, str]:
         """
@@ -210,7 +189,14 @@ class StoryManager:
             RuntimeError: If the story or profile has not been loaded prior to calling this method.
         """
         if not self.story or not self.profile:
-            raise RuntimeError("Story or profile not loaded")
+            try:
+                self.refresh()
+            except Exception as e:
+                logger.error(
+                    f"Failed to get the story blueprint: {e}\n\n{traceback.format_exc()}"
+                )
+                raise Exception("Failed to get the story blueprint") from e
+
 
         return {
             "target_recipient_of_the_story": self.profile.details,

@@ -3,6 +3,7 @@ import os
 from typing import Optional, Dict
 from docx import Document
 from docx.shared import Inches, Pt
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml import parse_xml
 from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -70,6 +71,7 @@ class StoryDocument:
         filepath = os.path.join(self.story_folder, self.images_folder, filename)
         if os.path.exists(filepath):
             para = self.doc.add_paragraph()
+            para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
             run = para.add_run()
             run.add_picture(filepath, width=Inches(4))
         else:
@@ -82,6 +84,7 @@ class StoryDocument:
             self._add_stylized_title(chapter["title"], 1)
             for paragraph in chapter["content"].split("\n"):
                 self._process_paragraph(paragraph, chapter_number)
+        self._add_stylized_title("The End", 0)
 
     def save_document(self, filename: str) -> str:
         """Save the generated story document to a specified file."""
@@ -140,5 +143,5 @@ class StoryDocument:
             logging.error(
                 f"Failed to convert {input_path} to PDF: {e}/n/n{traceback.format_exc()}"
             )
-       
+
         return output_path

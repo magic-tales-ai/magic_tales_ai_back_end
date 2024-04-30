@@ -78,9 +78,9 @@ class ChatAssistant(Assistant):
                 logger.error(
                     f"Failed to parse AI message content: {ai_message_content}/n/nError traceback:/n/n {traceback.format_exc()}"
                 )
-                #retry_message = " I apologize, I encountered a hiccup sending a command to our system. I'm going to try again. Bear with me."
+                # retry_message = " I apologize, I encountered a hiccup sending a command to our system. I'm going to try again. Bear with me."
                 # message_for_human = (message_for_human or "") + retry_message
-                return message_for_human, None, traceback.format_exc() 
+                return message_for_human, None, traceback.format_exc()
 
     def _default_parsing(
         self, ai_message_content: str
@@ -93,7 +93,7 @@ class ChatAssistant(Assistant):
         )
         if error:
             return message_for_human, message_for_system_pre_processed, error
-        
+
         message_for_system = None
         if message_for_system_pre_processed:
             try:
@@ -113,9 +113,6 @@ class ChatAssistant(Assistant):
                 message_for_system = WSInput(**message_for_system_dict)
             except (json.JSONDecodeError, ValueError, TypeError) as e:
                 logger.error(f"Error creating WSInput from system message: {e}")
-                error = traceback.format_exc()
-                # User-friendly message in case of failure
-                #retry_message = " I apologize, I encountered a hiccup processing a system request. Could you rephrase or try again?"
-                # message_for_human = (message_for_human or "") + retry_message
+                error = traceback.format_exc()                
 
         return message_for_human, message_for_system, error

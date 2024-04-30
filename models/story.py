@@ -27,7 +27,7 @@ class Story(Base):
     __tablename__ = "stories"
     id = Column(Integer, primary_key=True)
     profile_id = Column(Integer, ForeignKey("profiles.id"))
-    session_id = Column(String(255))
+    ws_session_uid = Column(String(255))
     story_folder = Column(Text)
     images_subfolder = Column(Text)
     title = Column(Text)
@@ -43,7 +43,7 @@ class Story(Base):
         return {
             "id": self.id,
             "profile_id": self.profile_id,
-            "session_id": self.session_id,
+            "ws_session_uid": self.ws_session_uid,
             "title": self.title,
             "features": self.features,
             "synopsis": self.synopsis,
@@ -74,7 +74,7 @@ class Story(Base):
 class StorySchema(Schema):
     id = fields.Int()
     profile_id = fields.Int()
-    session_id = fields.Str()
+    ws_session_uid = fields.Str()
     title = fields.Str()
     features = fields.Str()
     synopsis = fields.Str()
@@ -85,6 +85,7 @@ class StorySchema(Schema):
 @dataclass
 class InMemStoryData:
     chapters: List[Dict[str, str]] = field(default_factory=list)
+    num_chapters: int = field(default=0)
     post_processed_chapters: List[Dict[str, Any]] = field(default_factory=list)
     image_prompt_generator_prompt_messages: List[Dict[str, str]] = field(
         default_factory=list
@@ -120,11 +121,13 @@ class InMemStoryData:
                 logger.info(f"Successfully loaded InMemStoryData state from {filepath}")
                 return loaded_data
             except Exception as e:
-                logger.error(f"Could not load InMemStoryData state from {filepath}. Error: {e}", exc_info=True)
-        
+                logger.error(
+                    f"Could not load InMemStoryData state from {filepath}. Error: {e}",
+                    exc_info=True,
+                )
+
         logger.info("Returning a new instance of InMemStoryData.")
         return InMemStoryData()  # Return a new instance if the load fails
-
 
 
 def handle_custom_objects(obj):

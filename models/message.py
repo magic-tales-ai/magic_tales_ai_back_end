@@ -20,7 +20,7 @@ class Message(Base):
     __tablename__ = "conversations"
     id = Column(Integer, primary_key=True)
     user_id = Column(ForeignKey("users.id"))
-    session_id = Column(String(255))
+    ws_session_uid = Column(String(255))
     origin = Column(Enum(OriginEnum))
     type = Column(Enum(TypeEnum))
     command = Column(String(255))
@@ -32,7 +32,7 @@ class MessageSchema(Schema):
     id = fields.Int()
     user_id = fields.Int()
     user = fields.Nested(UserSchema, many=False)
-    session_id = fields.Str()
+    ws_session_uid = fields.Str()
     origin = fields.Enum(OriginEnum)
     type = fields.Enum(TypeEnum)
     command = fields.Str()

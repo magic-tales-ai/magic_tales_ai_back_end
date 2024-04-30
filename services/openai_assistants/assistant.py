@@ -148,7 +148,7 @@ class Assistant(ABC):
         try:
             # Send the message to the OpenAI assistant
             await self._send_message_to_assistant(message)
-            
+
             # Initiate the assistant run and wait for completion
             await self._wait_for_assistant_run_completion()
 
@@ -156,22 +156,29 @@ class Assistant(ABC):
             messages_data = await self._retrieve_messages()
 
             ai_message_for_human, ai_message_for_system, error = (
-                    await self._process_ai_response(messages_data, parsing_method)
-                )
+                await self._process_ai_response(messages_data, parsing_method)
+            )
 
             if error:
                 if self.retry_count < self.config.max_retries:
                     self.retry_count += 1
-                    logger.info(f"Retrying due to error: {error}. Attempt {self.retry_count}")
+                    logger.info(
+                        f"Retrying due to error: {error}. Attempt {self.retry_count}"
+                    )
                     retry_message = f"Error encountered while procesing your response:\n{error}.\nPlease clarify or modify the respose. Pay attention to the JSON format required. Don't forget to extrictly use the same language used with the user. This is not the user. I'm the system and I'll always respond in EN"
                     return await self.request_ai_response(retry_message, parsing_method)
                 else:
-                    logger.error("Maximum retries reached, unable to resolve the issue.")
-                    return "Unfortunately, I couldn't process your request due to repeated errors.", ""
+                    logger.error(
+                        "Maximum retries reached, unable to resolve the issue."
+                    )
+                    return (
+                        "Unfortunately, I couldn't process your request due to repeated errors.",
+                        "",
+                    )
 
             # Reset retry count on successful processing
-            self.retry_count = 0            
-            return ai_message_for_human, ai_message_for_system                
+            self.retry_count = 0
+            return ai_message_for_human, ai_message_for_system
 
         except Exception as e:
             logger.error(
