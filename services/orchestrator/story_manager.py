@@ -6,8 +6,9 @@ import traceback
 from typing import Dict, Optional
 import datetime
 
-from models.story import Story, InMemStoryData
-from models.profile import Profile
+from magic_tales_models.models.story import Story
+from models.story import InMemStoryData
+from magic_tales_models.models.profile import Profile
 from models.story_state import StoryState
 from .database_manager import DatabaseManager
 from services.utils.log_utils import get_logger

@@ -16,7 +16,7 @@ from openai.types.beta.threads import (
 from services.utils.log_utils import get_logger
 from services.openai_assistants.assistant import Assistant
 from models.ws_input import WSInput
-from models.user import User
+from magic_tales_models.models.user import User
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

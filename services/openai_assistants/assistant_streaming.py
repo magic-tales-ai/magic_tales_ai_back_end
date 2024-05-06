@@ -20,7 +20,7 @@ from services.openai_assistants.prompt_utils import (
 )
 from services.openai_assistants.event_handler import EventHandler
 from models.ws_input import WSInput
-from models.user import User
+from magic_tales_models.models.user import User
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

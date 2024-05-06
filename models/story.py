@@ -1,12 +1,6 @@
 import os
-import markdown
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import datetime
-from db import Base
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey
-from sqlalchemy.orm import relationship
-
 from marshmallow import Schema, fields
 from dataclasses import dataclass, field
 import dill
@@ -21,55 +15,6 @@ from services.utils.log_utils import get_logger
 logger = get_logger(__name__)
 
 STORY_DATA_FILENAME = "story.dill"
-
-
-class Story(Base):
-    __tablename__ = "stories"
-    id = Column(Integer, primary_key=True)
-    profile_id = Column(Integer, ForeignKey("profiles.id"))
-    ws_session_uid = Column(String(255))
-    story_folder = Column(Text)
-    images_subfolder = Column(Text)
-    title = Column(Text)
-    features = Column(Text)
-    synopsis = Column(Text)
-    last_successful_step = Column(Integer)
-    last_updated = Column(TIMESTAMP, default=datetime.datetime.now(datetime.UTC))
-    created_at = Column(TIMESTAMP, default=datetime.datetime.now(datetime.UTC))
-    # chapters = relationship("Chapter", back_populates="story")
-    # images = relationship("Image", back_populates="story")
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "profile_id": self.profile_id,
-            "ws_session_uid": self.ws_session_uid,
-            "title": self.title,
-            "features": self.features,
-            "synopsis": self.synopsis,
-            "last_successful_step": self.last_successful_step,
-            "last_updated": self.last_updated,
-            "created_at": self.created_at,
-        }
-
-
-# class Chapter(Base):
-#     __tablename__ = "chapters"
-#     id = Column(Integer, primary_key=True)
-#     story_id = Column(Integer, ForeignKey("stories.id"))
-#     chapter_number = Column(Integer)
-#     content = Column(Text)
-#     story = relationship("Story", back_populates="chapters")
-
-
-# class Image(Base):
-#     __tablename__ = "images"
-#     id = Column(Integer, primary_key=True)
-#     story_id = Column(Integer, ForeignKey("stories.id"))
-#     image_description = Column(Text)
-#     image_path = Column(Text)
-#     story = relationship("Story", back_populates="images")
-
 
 class StorySchema(Schema):
     id = fields.Int()

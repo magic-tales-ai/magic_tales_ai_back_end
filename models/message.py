@@ -1,9 +1,6 @@
-import datetime
 import enum
-from db import Base
 from marshmallow import Schema, fields
 from models.user import UserSchema
-from sqlalchemy import Column, Integer, String, TIMESTAMP, ForeignKey, Enum, JSON
 
 
 class OriginEnum(enum.Enum):
@@ -14,18 +11,6 @@ class OriginEnum(enum.Enum):
 class TypeEnum(enum.Enum):
     chat = "chat"
     command = "command"
-
-
-class Message(Base):
-    __tablename__ = "conversations"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(ForeignKey("users.id"))
-    ws_session_uid = Column(String(255))
-    origin = Column(Enum(OriginEnum))
-    type = Column(Enum(TypeEnum))
-    command = Column(String(255))
-    details = Column(JSON)
-    created_at = Column(TIMESTAMP, default=datetime.datetime.now(datetime.UTC))
 
 
 class MessageSchema(Schema):

@@ -7,10 +7,12 @@ from sqlalchemy.sql import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import desc
 
-from models.user import User
-from models.profile import Profile
-from models.story import Story, StoryState
-from models.message import Message, MessageSchema, OriginEnum, TypeEnum
+from magic_tales_models.models.user import User
+from magic_tales_models.models.profile import Profile
+from magic_tales_models.models.story import Story
+from models.story import StoryState
+from magic_tales_models.models.message import Message
+from models.message import MessageSchema, OriginEnum, TypeEnum
 
 
 class DatabaseManager:
@@ -226,8 +228,8 @@ class DatabaseManager:
                 user_id=user_id,
                 ws_session_uid=ws_session_uid,
                 command=command,
-                origin=origin,
-                type=type,
+                origin=origin.value,
+                type=type.value,
                 details=details
             )
             self.session.add(new_message)
