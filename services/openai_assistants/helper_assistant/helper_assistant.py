@@ -7,7 +7,11 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from services.utils.log_utils import get_logger
 from services.openai_assistants.assistant import Assistant
 from magic_tales_models.models.user import User
+<<<<<<< HEAD
 from magic_tales_models.models.ws_input import WSInput
+=======
+from models.ws_input import WSInput
+>>>>>>> dco/db-models-changes
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

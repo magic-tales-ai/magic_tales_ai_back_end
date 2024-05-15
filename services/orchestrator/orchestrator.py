@@ -47,6 +47,7 @@ from services.image_generators.dalle3 import DALLE3ImageGenerator
 from services.utils.log_utils import get_logger
 from services.session_service import refresh_access_token
 
+<<<<<<< HEAD
 from magic_tales_models.models.story import Story
 from magic_tales_models.models.story_state import StoryState
 
@@ -63,6 +64,21 @@ from magic_tales_models.models.profile import Profile
 from magic_tales_models.models.user import User
 from magic_tales_models.models.ws_input import WSInput
 from magic_tales_models.models.ws_output import WSOutput
+=======
+from models.story_state import StoryState
+from magic_tales_models.models.story import Story
+from .story_manager import StoryManager
+from .database_manager import DatabaseManager
+from models.command import Command
+from models.response import ResponseStatus
+from magic_tales_models.models.message import Message
+from models.message import MessageSchema, OriginEnum, TypeEnum
+from magic_tales_models.models.profile import Profile
+from magic_tales_models.models.plan import Plan # Initialize plan model for join on user
+from magic_tales_models.models.user import User
+from models.ws_input import WSInput
+from models.ws_output import WSOutput
+>>>>>>> dco/db-models-changes
 
 
 # Set up logging
