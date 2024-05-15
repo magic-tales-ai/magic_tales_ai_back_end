@@ -140,6 +140,8 @@ class MagicTalesCoreOrchestrator:
 
         self.story_manager = StoryManager(db_manager=self.database_manager)
 
+        self.wait_for_response_to_continue_where_we_left_off = False
+
         logger.info("MagicTales initialized.")
 
     def _validate_openai_api_key(self) -> None:
@@ -500,9 +502,11 @@ class MagicTalesCoreOrchestrator:
                 self.user_id, {"helper_id": self.helper_assistant.openai_assistant.id}
             )
 
-    async def handle_command_new_tale(self, frontend_request: WSInput):
+    async def handle_command_new_tale(self, frontend_request: WSInput):               
         if await self.check_last_story_finished_correctly(self.user_id):
             asyncio.create_task(self._handle_new_tale())
+        else:
+            self.wait_for_response_to_continue_where_we_left_off = True
 
     async def handle_command_spin_off(self, frontend_request: WSInput):
         if not frontend_request.story_id:
@@ -847,7 +851,7 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("Updating profile.")
 
-        # self._reset()
+        # await self._reset()
         # await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
 
     async def _handle_spin_off_tale(self, request: WSInput) -> None:
@@ -859,7 +863,7 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("Starting a spin-off story generation.")
 
-        self._reset()
+        await self._reset()
         await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
 
     async def _handle_new_tale(self) -> None:
@@ -870,7 +874,7 @@ class MagicTalesCoreOrchestrator:
             None.
         """
         logger.info("Starting story generation from scratch.")
-        self._reset()
+        await self._reset()
         await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
 
     async def _generate_and_send_update_message_for_user(
@@ -940,21 +944,6 @@ class MagicTalesCoreOrchestrator:
 
         return user, profiles, stories
 
-    def _should_resume(self) -> bool:
-        """
-        Determines if the story generation process should resume from the last saved state.
-
-        Returns:
-            bool: True if the story should be resumed, False otherwise.
-        """
-        self.latest_story_dir = get_latest_story_directory(
-            self.config.output_artifacts.stories_root_dir
-        )
-        return (
-            self.config.output_artifacts.continue_where_we_left_of
-            and self.latest_story_dir is not None
-        )
-
     async def _process_story_creation_step(
         self, current_step: StoryState, **kwargs
     ) -> None:
@@ -1009,7 +998,7 @@ class MagicTalesCoreOrchestrator:
                 logger.error(f"Failed to refresh access token: {e}")
                 break
 
-    def _reset(self) -> None:
+    async def _reset(self) -> None:
         """
         Reset the variables for a fresh run.
 
@@ -1017,7 +1006,7 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             # Resetting the StoryManager object to its initial state
-            self.story_manager.reset()
+            await self.story_manager.reset()
 
         except Exception as e:
             logger.error(
@@ -1091,7 +1080,8 @@ class MagicTalesCoreOrchestrator:
             await self._handle_chat_completed(ai_message_for_system)
             return            
 
-        if command == Command.CONTINUE_STORY_CREATION:
+        if command == Command.CONTINUE_STORY_CREATION and self.wait_for_response_to_continue_where_we_left_off:
+            self.wait_for_response_to_continue_where_we_left_off = False
             if ai_message_for_system.message == "true":
                 # asyncio.create_task(self._resume_story())
                 await self._resume_story()

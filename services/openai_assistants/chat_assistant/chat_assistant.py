@@ -38,45 +38,67 @@ class ChatAssistant(Assistant):
         Returns:
             A tuple containing potentially extracted `message_for_human` as str and `message_for_system` as a dict or None for each if not applicable or errors occur.
         """
-        message_for_human = None
-        message_for_system = {}
-
         try:
-            # Remove any surrounding backticks and newline characters
-            ai_message_content = ai_message_content.strip("```\n")
+            # # Remove surrounding characters and escape single quotes
+            # sanitized_content = ai_message_content.strip("\`\n").replace("'", "\\'")
 
-            # Directly parse the AI message content as JSON
-            ai_message_dict = json.loads(ai_message_content)
-            message_for_human = ai_message_dict.get("message_for_human")
+            # # Remove leading and trailing quotes
+            # sanitized_content = sanitized_content.strip('"')
+
+            # # Replace escaped double quotes with single quotes
+            # sanitized_content = sanitized_content.replace('\\"', '"')
+
+            sanitized_content =  ai_message_content
+
+            # Parse the sanitized JSON
+            ai_message_dict = json.loads(sanitized_content)
+
+            # Extract the required keys
+            message_for_human = ai_message_dict.get("message_for_human", "")
             message_for_system = ai_message_dict.get("message_for_system", {})
+
+            # Ensure message_for_system is a dictionary
             if not isinstance(message_for_system, dict):
+                logger.warning("message_for_system is not a dictionary. Resetting to empty dict.")
                 message_for_system = {}
+
             return message_for_human, message_for_system, None
-        except json.JSONDecodeError as e:
-            human_message_pattern = r'"message_for_human"\s*:\s*"([^"]*)"'
-            system_message_pattern = r'"message_for_system"\s*:\s*"({[^"]*})"'
 
-            try:
-                human_match = re.search(human_message_pattern, ai_message_content)
-                if human_match:
-                    message_for_human = human_match.group(1)
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"JSON parsing failed, attempting regex extraction: {str(e)}")
+            return self._extract_with_regex(ai_message_content)
+        
 
-                system_match = re.search(system_message_pattern, ai_message_content, re.DOTALL)
-                if system_match:
-                    message_for_system_str = system_match.group(1)
-                    try:
-                        message_for_system = json.loads(message_for_system_str)
-                    except json.JSONDecodeError:
-                        # If the extracted message_for_system is not valid JSON, try to parse it as a string
-                        message_for_system = {"command": message_for_system_str}
-                else:
-                    message_for_system = {}
+    def _extract_with_regex(self, ai_message_content: str) -> Tuple[Optional[str], Optional[Dict], Optional[str]]:
+        """
+        Fallback regex extraction if JSON parsing fails.
 
-                return message_for_human, message_for_system, None
-            except (KeyError, ValueError) as e:
-                logger.error(f"Failed to parse AI message content: {ai_message_content}\n\nError: {str(e)}")
-                return None, {}, traceback.format_exc()
+        Args:
+            ai_message_content (str): The raw AI response content that failed JSON parsing.
 
+        Returns:
+            Tuple containing message for human, system command as a dictionary or None, and error message if applicable.
+        """
+        try:
+            # Remove surrounding characters and escape single quotes
+            sanitized_content = ai_message_content.strip("\`\n").replace("'", "\\'")
+
+            # Extract message_for_human
+            human_match = re.search(r'"message_for_human"\s*:\s*"([^"]*)"', sanitized_content)
+            message_for_human = human_match.group(1) if human_match else ""
+
+            # Extract message_for_system
+            system_match = re.search(r'"message_for_system"\s*:\s*(\{.*?\})', sanitized_content, re.DOTALL)
+            system_msg_str = system_match.group(1) if system_match else "{}"
+            message_for_system = json.loads(system_msg_str)
+
+            return message_for_human, message_for_system, None
+
+        except Exception as e:
+            error_msg = f"Failed during regex extraction: {traceback.format_exc()}"
+            logger.warning(error_msg)
+            return "", {}, error_msg
+        
     def _default_parsing(
         self, ai_message_content: str
     ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
