@@ -9,15 +9,8 @@ from sqlalchemy import desc
 
 from magic_tales_models.models.user import User
 from magic_tales_models.models.profile import Profile
-<<<<<<< HEAD
 from magic_tales_models.models.story import Story, StoryState
 from magic_tales_models.models.message import Message, OriginEnum, TypeEnum
-=======
-from magic_tales_models.models.story import Story
-from models.story import StoryState
-from magic_tales_models.models.message import Message
-from models.message import MessageSchema, OriginEnum, TypeEnum
->>>>>>> dco/db-models-changes
 
 
 class DatabaseManager:
@@ -241,15 +234,9 @@ class DatabaseManager:
                 user_id=user_id,
                 ws_session_uid=ws_session_uid,
                 command=command,
-<<<<<<< HEAD
                 origin=origin,
                 type=type,
                 details=details,
-=======
-                origin=origin.value,
-                type=type.value,
-                details=details
->>>>>>> dco/db-models-changes
             )
             self.session.add(new_message)
             await self.session.commit()

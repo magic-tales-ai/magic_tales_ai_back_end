@@ -19,11 +19,7 @@ from services.openai_assistants.prompt_utils import (
     async_load_prompt_template_from_file,
 )
 from services.openai_assistants.event_handler import EventHandler
-<<<<<<< HEAD
 from magic_tales_models.models.ws_input import WSInput
-=======
-from models.ws_input import WSInput
->>>>>>> dco/db-models-changes
 from magic_tales_models.models.user import User
 
 # Set up logging

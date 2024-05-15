@@ -8,11 +8,7 @@ import re
 
 from services.utils.log_utils import get_logger
 from services.openai_assistants.assistant import Assistant
-<<<<<<< HEAD
 from magic_tales_models.models.ws_input import WSInput
-=======
-from models.ws_input import WSInput
->>>>>>> dco/db-models-changes
 from magic_tales_models.models.user import User
 
 # Set up logging
