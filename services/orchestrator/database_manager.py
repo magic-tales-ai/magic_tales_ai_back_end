@@ -7,10 +7,10 @@ from sqlalchemy.sql import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import desc
 
-from models.user import User
-from models.profile import Profile
-from models.story import Story, StoryState
-from models.message import Message, MessageSchema, OriginEnum, TypeEnum
+from magic_tales_models.models.user import User
+from magic_tales_models.models.profile import Profile
+from magic_tales_models.models.story import Story, StoryState
+from magic_tales_models.models.message import Message, OriginEnum, TypeEnum
 
 
 class DatabaseManager:
@@ -202,8 +202,16 @@ class DatabaseManager:
             raise Exception(
                 f"Failed to create profile: {traceback.format_exc()}"
             ) from e
-    
-    async def add_message(self, user_id: int, ws_session_uid: str, command: str, origin: OriginEnum, type: TypeEnum, details: dict) -> Message:
+
+    async def add_message(
+        self,
+        user_id: int,
+        ws_session_uid: str,
+        command: str,
+        origin: OriginEnum,
+        type: TypeEnum,
+        details: dict,
+    ) -> Message:
         """
         Creates and saves a new message in the database.
 
@@ -228,7 +236,7 @@ class DatabaseManager:
                 command=command,
                 origin=origin,
                 type=type,
-                details=details
+                details=details,
             )
             self.session.add(new_message)
             await self.session.commit()
@@ -236,7 +244,9 @@ class DatabaseManager:
             return new_message
         except SQLAlchemyError as e:
             await self.session.rollback()
-            raise Exception(f"Failed to add message to session: {traceback.format_exc()}") from e
+            raise Exception(
+                f"Failed to add message to session: {traceback.format_exc()}"
+            ) from e
 
     async def delete_messages_by_session(self, ws_session_uid: int):
         """
@@ -349,8 +359,17 @@ class DatabaseManager:
         except SQLAlchemyError as e:
             await self.session.rollback()
             raise Exception(f"Failed to update story: {traceback.format_exc()}") from e
-        
-    async def create_story(self, profile_id: int, ws_session_uid: str, title: str, features: str, synopsis: str, story_folder: str, images_subfolder: str) -> Story:
+
+    async def create_story(
+        self,
+        profile_id: int,
+        ws_session_uid: str,
+        title: str,
+        features: str,
+        synopsis: str,
+        story_folder: str,
+        images_subfolder: str,
+    ) -> Story:
         """
         Creates a new story in the database with the given details.
 
@@ -379,7 +398,7 @@ class DatabaseManager:
                 story_folder=story_folder,
                 images_subfolder=images_subfolder,
                 last_successful_step=StoryState.USER_FACING_CHAT.value,
-                last_updated=datetime.datetime.now(datetime.UTC)
+                last_updated=datetime.datetime.now(datetime.UTC),
             )
             self.session.add(new_story)
             await self.session.commit()
@@ -399,7 +418,7 @@ class DatabaseManager:
         Raises:
             Exception: If the refresh operation fails.
         """
-        try:            
+        try:
             await self.session.refresh(story)
             # return story
         except SQLAlchemyError as e:
@@ -415,8 +434,10 @@ class DatabaseManager:
         Raises:
             Exception: If the refresh operation fails.
         """
-        try:            
+        try:
             await self.session.refresh(profile)
             # return profile
         except SQLAlchemyError as e:
-            raise Exception(f"Failed to refresh profile: {traceback.format_exc()}") from e
+            raise Exception(
+                f"Failed to refresh profile: {traceback.format_exc()}"
+            ) from e

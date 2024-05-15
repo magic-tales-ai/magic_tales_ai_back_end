@@ -11,8 +11,12 @@ import traceback
 from sqlalchemy import desc, select, delete, update
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError, NoResultFound
-from openai.types.beta.threads import MessageContentText
+from openai.types.beta.threads import (
+    TextContentBlock,
+    ImageFileContentBlock,
+    ImageURLContentBlock,
+)
+
 from enum import Enum
 
 
@@ -43,17 +47,22 @@ from services.image_generators.dalle3 import DALLE3ImageGenerator
 from services.utils.log_utils import get_logger
 from services.session_service import refresh_access_token
 
-from models.story_state import StoryState
-from models.story import Story
+from magic_tales_models.models.story import Story
+from magic_tales_models.models.story_state import StoryState
+
 from .story_manager import StoryManager
 from .database_manager import DatabaseManager
-from models.command import Command
-from models.response import ResponseStatus
-from models.message import Message, MessageSchema, OriginEnum, TypeEnum
-from models.profile import Profile
-from models.user import User
-from models.ws_input import WSInput
-from models.ws_output import WSOutput
+from magic_tales_models.models.command import Command
+from magic_tales_models.models.response import ResponseStatus
+from magic_tales_models.models.message import (
+    MessageSchema,
+    OriginEnum,
+    TypeEnum,
+)
+from magic_tales_models.models.profile import Profile
+from magic_tales_models.models.user import User
+from magic_tales_models.models.ws_input import WSInput
+from magic_tales_models.models.ws_output import WSOutput
 
 
 # Set up logging
@@ -125,7 +134,7 @@ class MagicTalesCoreOrchestrator:
         self.token_refresh_interval = 120  # 2 minutes in seconds
         self.token_refresh_task = None
 
-        self.chat_completed = False        
+        self.chat_completed_queue = asyncio.Queue()        
 
         self.database_manager = DatabaseManager(session=session)
 
@@ -139,21 +148,219 @@ class MagicTalesCoreOrchestrator:
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
 
+    # async def process_frontend_request(
+    #     self, frontend_request: WSInput, token_data: dict
+    # ) -> None:
+    #     """
+    #     Process incoming commands/requests from the AI Core Interface Layer.
+
+    #     Args:
+    #         frontend_request (WSInput): Full command structure.
+    #         token_data (dict): Token data from the AI Core Interface Layer.
+
+    #     Returns:
+    #         None
+    #     """
+    #     self.token_data = token_data
+    #     if not self.token_refresh_task:
+    #         self.new_token = await refresh_access_token(frontend_request.token)
+    #         self.token_refresh_task = asyncio.create_task(
+    #             self.refresh_token_periodically()
+    #         )
+
+    #     coming_user_id = token_data.get("user_id", None)
+
+    #     # Send ACK if command received requires it
+    #     if frontend_request.command in [
+    #         Command.NEW_TALE,
+    #         Command.SPIN_OFF,
+    #         Command.UPDATE_PROFILE,
+    #         Command.LINK_USER_WITH_CONVERSATIONS,
+    #     ]:
+    #         await self.send_message_to_frontend(
+    #             WSOutput(
+    #                 command=frontend_request.command, token=self.new_token, ack=True
+    #             )
+    #         )
+
+    #     await self.send_working_command_to_frontend(True)
+
+    #     # There has been a change in the user_id
+    #     if self.user_id != coming_user_id:
+    #         await self.send_message_to_frontend(
+    #             WSOutput(
+    #                 command=Command.MESSAGE_FOR_HUMAN,
+    #                 token=self.new_token,
+    #                 message="Let's get your personalized assistant here...",
+    #             )
+    #         )
+    #         self.user_id = coming_user_id
+    #         self.user_dict = (
+    #             await self.database_manager.fetch_user_by_id(self.user_id)
+    #         ).to_dict()
+
+    #         user_message = self._generate_starting_message(
+    #             try_mode=frontend_request.try_mode
+    #         )
+    #         if self.user_dict:
+    #             logger.info(f"User {self.user_id} has been set.")
+    #             assistant_id = self.user_dict.get("assistant_id", None)
+    #             helper_id = self.user_dict.get("helper_id", None)
+
+    #             try:
+    #                 await self.chat_assistant.start_assistant(assistant_id)
+    #             except ValueError as e:
+    #                 logger.error(f"Error initializing chat assistant: {e}")
+    #                 await self.send_message_to_frontend(
+    #                     WSOutput(
+    #                         command=Command.MESSAGE_FOR_HUMAN,
+    #                         token=self.new_token,
+    #                         message="We are currently experiencing technical difficulties. Please try again later.",
+    #                     )
+    #                 )
+    #                 return
+
+    #             if assistant_id != self.chat_assistant.openai_assistant.id:
+    #                 logger.warn(
+    #                     f"User {self.user_id} had CHAT assistant {assistant_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
+    #                 )
+    #                 await self.database_manager.update_user_record_by_id(
+    #                     self.user_id,
+    #                     {"assistant_id": self.chat_assistant.openai_assistant.id},
+    #                 )
+    #             # We need an specific Assistant before we send any Message to the user
+    #             await self._generate_and_send_update_message_for_user(user_message)
+
+    #             try:
+    #                 await self.helper_assistant.start_assistant(helper_id)
+    #             except ValueError as e:
+    #                 logger.error(f"Error initializing helper assistant: {e}")
+    #                 await self.send_message_to_frontend(
+    #                     WSOutput(
+    #                         command=Command.MESSAGE_FOR_HUMAN,
+    #                         token=self.new_token,
+    #                         message="We are currently experiencing technical difficulties. Please try again later.",
+    #                     )
+    #                 )
+    #                 return
+
+    #             if helper_id != self.helper_assistant.openai_assistant.id:
+    #                 logger.warn(
+    #                     f"User {self.user_id} had HELPER assistant {helper_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
+    #                 )
+    #                 await self.database_manager.update_user_record_by_id(
+    #                     self.user_id,
+    #                     {"helper_id": self.helper_assistant.openai_assistant.id},
+    #                 )
+
+    #             await self._fetch_user_data_and_update_knowledge_base()
+    #             await self._generate_and_send_update_message_for_user(
+    #                 self.config.updates_request_prompts.after_feching_user_data
+    #             )
+    #             await self.story_manager.refresh()
+    #         else:
+    #             logger.warn(f"User {self.user_id} has not been found.")
+    #             raise (f"User {self.user_id} has not been found.")
+
+    #     # Saving Messages for all commands in the DB
+    #     msg_type = (
+    #         TypeEnum.chat
+    #         if frontend_request.command == Command.USER_MESSAGE
+    #         else TypeEnum.command
+    #     )
+    #     await self.database_manager.add_message(
+    #         self.user_id,
+    #         self.websocket.uid,
+    #         frontend_request.command,
+    #         OriginEnum.user,
+    #         msg_type,
+    #         frontend_request.model_dump(),
+    #     )
+    #     await self.story_manager.refresh()
+
+    #     ## HANDLEING EACH COMMAND POSSIBILITY
+    #     if frontend_request.command == Command.NEW_TALE:
+    #         if await self.check_last_story_finished_correctly(self.user_id):
+    #             asyncio.create_task(self._handle_new_tale())
+
+    #     elif frontend_request.command == Command.SPIN_OFF:
+    #         if not frontend_request.story_id:
+    #             raise Exception("story_id is required for spin-off")
+    #         asyncio.create_task(self._handle_spin_off_tale(frontend_request))
+
+    #     elif frontend_request.command == Command.UPDATE_PROFILE:
+    #         if not frontend_request.profile_id:
+    #             raise Exception("profile_id is required for update profile")
+
+    #         asyncio.create_task(
+    #             self._handle_user_request_update_profile(frontend_request)
+    #         )
+
+    #     # CONVERSATION RECOVERY
+    #     # this command is necesary to recover a current and not finished conversation
+    #     # the recover is based on CHAT TABLE records
+    #     #
+    #     elif frontend_request.command == Command.CONVERSATION_RECOVERY:
+    #         if not self.websocket.uid:
+    #             raise Exception(
+    #                 "uid is required for conversation recovery"
+    #             )
+
+    #         # read current conversation (CHAT ID)
+    #         conversations = await self.database_manager.fetch_messages_for_session(
+    #             self.websocket.uid
+    #         )
+    #         conversation_dicts = [
+    #             MessageSchema().dump(conversation) for conversation in conversations
+    #         ]
+    #         # send full conversation to CLIENTE/USER (to rebuild it)
+    #         await self.send_message_to_frontend(
+    #             WSOutput(
+    #                 command=frontend_request.command,
+    #                 token=self.new_token,
+    #                 data={"conversations": conversation_dicts},
+    #             )
+    #         )
+
+    #     # ASSOCIATE USER WITH CONVERSATIONS
+    #     elif frontend_request.command == Command.LINK_USER_WITH_CONVERSATIONS:
+    #         if not self.user_id:
+    #             raise Exception("user_id is required for link user with conversations")
+
+    #         if not frontend_request.session_ids:
+    #             raise Exception(
+    #                 "session_ids is required for link user with conversations"
+    #             )
+
+    #         await self.database_manager.link_user_with_conversations_by_session_ids(
+    #             frontend_request.session_ids
+    #         )
+    #         await self.story_manager.refresh()
+
+    #     elif frontend_request.command == Command.USER_MESSAGE:
+    #         # asyncio.create_task(self._handle_user_message(frontend_request))
+    #         await self._handle_user_message(frontend_request)
+
+    #     elif frontend_request.command == Command.USER_LOGGED_IN:
+    #         await self.check_last_story_finished_correctly(self.user_id)
+
+    #     logger.info(f"Processed command: {frontend_request.command}")
+
+    #     await self.send_working_command_to_frontend(False)
+
     async def process_frontend_request(
         self, frontend_request: WSInput, token_data: dict
     ) -> None:
         """
-        Process incoming commands/requests from the AI Core Interface Layer ().
+        Process incoming commands/requests from the AI Core Interface Layer.
 
         Args:
-            frontend_request (WSInput): Full command structure. Please look at the ICD docs for more details.
+            frontend_request (WSInput): Full command structure.
             token_data (dict): Token data from the AI Core Interface Layer.
 
         Returns:
-            dict: Response data to be sent back to the AI Core Interface Layer.
+            None
         """
-        # logger.info(f"token:{frontend_request.token}")  # DEBUG
-
         self.token_data = token_data
         if not self.token_refresh_task:
             self.new_token = await refresh_access_token(frontend_request.token)
@@ -161,16 +368,14 @@ class MagicTalesCoreOrchestrator:
                 self.refresh_token_periodically()
             )
 
-        # No matter what We will always have a user!!
         coming_user_id = token_data.get("user_id", None)
 
-        # Send ACK if command received requires it
-        if (
-            frontend_request.command == Command.NEW_TALE
-            or frontend_request.command == Command.SPIN_OFF
-            or frontend_request.command == Command.UPDATE_PROFILE
-            or Command.LINK_USER_WITH_CONVERSATIONS
-        ):
+        if frontend_request.command in [
+            Command.NEW_TALE,
+            Command.SPIN_OFF,
+            Command.UPDATE_PROFILE,
+            Command.LINK_USER_WITH_CONVERSATIONS,
+        ]:
             await self.send_message_to_frontend(
                 WSOutput(
                     command=frontend_request.command, token=self.new_token, ack=True
@@ -179,138 +384,246 @@ class MagicTalesCoreOrchestrator:
 
         await self.send_working_command_to_frontend(True)
 
-        # There has been a change in the user_id
         if self.user_id != coming_user_id:
-            await self.send_message_to_frontend(
-                WSOutput(
-                    command=Command.MESSAGE_FOR_HUMAN,
-                    token=self.new_token,
-                    message="Let's get your personalized assistant here...",
-                )
+            await self._handle_user_id_change(coming_user_id, frontend_request.try_mode)
+
+        await self._save_command_message(frontend_request)
+
+        command_handlers = {
+            Command.NEW_TALE: self.handle_command_new_tale,
+            Command.SPIN_OFF: self.handle_command_spin_off,
+            Command.UPDATE_PROFILE: self.handle_command_update_profile,
+            Command.CONVERSATION_RECOVERY: self.handle_command_conversation_recovery,
+            Command.LINK_USER_WITH_CONVERSATIONS: self.handle_command_link_user_with_conversations,
+            Command.USER_MESSAGE: self._handle_user_message,
+            Command.USER_LOGGED_IN: self.check_last_story_finished_correctly,
+        }
+
+        await self.process_command(command_handlers, frontend_request)
+
+        # if frontend_request.command in command_handlers:
+        #     await self.send_working_command_to_frontend(False)
+        #     await command_handlers[frontend_request.command]()
+
+        logger.info(f"Processed command: {frontend_request.command}")
+        await self.send_working_command_to_frontend(False)
+
+    async def _handle_user_id_change(self, coming_user_id: int, try_mode: bool) -> None:
+        """
+        Handle the change in user ID and initialize user-specific resources.
+
+        Args:
+            coming_user_id (int): The new user ID.
+        """
+        self.user_id = coming_user_id
+        self.user_dict = (
+            await self.database_manager.fetch_user_by_id(self.user_id)
+        ).to_dict()        
+        if not self.user_dict:
+            logger.warn(f"User {self.user_id} has not been found.")
+            raise ValueError(f"User {self.user_id} has not been found.")        
+
+        assistant_id = self.user_dict.get("assistant_id", None)
+        helper_id = self.user_dict.get("helper_id", None)
+
+        logger.info(f"User current Assistant id: {assistant_id}")
+        logger.info(f"User current Helper id: {helper_id}")
+
+        files_paths = await self._fetch_user_data_and_update_knowledge_base()
+        await self._initialize_assistants(assistant_id, helper_id, files_paths)
+
+        user_message = self._generate_starting_message(try_mode=try_mode)
+        await self._generate_and_send_update_message_for_user(user_message)
+
+        await self.story_manager.refresh()
+        # await self._generate_and_send_update_message_for_user(
+        #     self.config.updates_request_prompts.after_feching_user_data
+        # )
+
+    async def process_command(self, command_handlers: dict, frontend_request: WSInput):
+        """
+        Process the incoming command using the appropriate handler from the command_handlers dictionary.
+
+        Args:
+            frontend_request (WSInput): The request from the frontend containing the command to process.
+        """
+        handler = command_handlers.get(frontend_request.command)
+        if handler:
+            await handler(frontend_request)
+        else:
+            logger.warning(f"Unknown command: {frontend_request.command}")
+
+    async def _initialize_assistants(
+        self,
+        assistant_id: Optional[str],
+        helper_id: Optional[str],
+        files_paths: Optional[List[str]],
+    ) -> None:
+        """
+        Initialize chat and helper assistants.
+
+        Args:
+            assistant_id (Optional[str]): The ID of the chat assistant.
+            helper_id (Optional[str]): The ID of the helper assistant.
+        """
+        try:
+            await self.chat_assistant.start_assistant(assistant_id, files_paths)
+        except ValueError as e:
+            logger.error(f"Error initializing chat assistant: {e}")
+            await self._send_error_message(
+                "We are currently experiencing technical difficulties. Please try again later."
             )
-            self.user_id = coming_user_id
-            self.user_dict = (
-                await self.database_manager.fetch_user_by_id(self.user_id)
-            ).to_dict()
+            return
 
-            user_message = self._generate_starting_message(
-                try_mode=frontend_request.try_mode
+        if assistant_id != self.chat_assistant.openai_assistant.id:
+            logger.warn(
+                f"User {self.user_id} had CHAT assistant {assistant_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
             )
-            if self.user_dict:
-                logger.info(f"User {self.user_id} has been set.")
-                assistant_id = self.user_dict.get("assistant_id", None)
-                helper_id = self.user_dict.get("helper_id", None)
+            await self.database_manager.update_user_record_by_id(
+                self.user_id, {"assistant_id": self.chat_assistant.openai_assistant.id}
+            )
 
-                await self.chat_assistant.start_assistant(assistant_id)
-                if assistant_id != self.chat_assistant.openai_assistant.id:
-                    logger.warn(
-                        f"User {self.user_id} had CHAT assistant {assistant_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
-                    )
-                    await self.database_manager.update_user_record_by_id(
-                        self.user_id,
-                        {"assistant_id": self.chat_assistant.openai_assistant.id},
-                    )
-                # We need an specific Assistant before we send any Message to the user
-                await self._generate_and_send_update_message_for_user(user_message)
+        try:
+            await self.helper_assistant.start_assistant(helper_id)
+        except ValueError as e:
+            logger.error(f"Error initializing helper assistant: {e}")
+            await self._send_error_message(
+                "We are currently experiencing technical difficulties. Please try again later."
+            )
+            return
 
-                await self.helper_assistant.start_assistant(helper_id)
-                if helper_id != self.helper_assistant.openai_assistant.id:
-                    logger.warn(
-                        f"User {self.user_id} had HELPER assistant {helper_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
-                    )
-                    await self.database_manager.update_user_record_by_id(
-                        self.user_id,
-                        {"helper_id": self.helper_assistant.openai_assistant.id},
-                    )
+        if helper_id != self.helper_assistant.openai_assistant.id:
+            logger.warn(
+                f"User {self.user_id} had HELPER assistant {helper_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
+            )
+            await self.database_manager.update_user_record_by_id(
+                self.user_id, {"helper_id": self.helper_assistant.openai_assistant.id}
+            )
 
-                await self._fetch_user_data_and_update_knowledge_base()
-                await self._generate_and_send_update_message_for_user(
-                    self.config.updates_request_prompts.after_feching_user_data
-                )
-                await self.story_manager.refresh()
-            else:
-                logger.warn(f"User {self.user_id} has not been found.")
-                raise (f"User {self.user_id} has not been found.")
+    async def handle_command_new_tale(self, frontend_request: WSInput):
+        if await self.check_last_story_finished_correctly(self.user_id):
+            asyncio.create_task(self._handle_new_tale())
 
-        # Saving Messages for all commands in the DB
-        msg_type=(
+    async def handle_command_spin_off(self, frontend_request: WSInput):
+        if not frontend_request.story_id:
+            raise Exception("story_id is required for spin-off")
+        asyncio.create_task(self._handle_spin_off_tale(frontend_request))
+
+    async def handle_command_update_profile(self, frontend_request: WSInput):
+        if not frontend_request.profile_id:
+            raise Exception("profile_id is required for update profile")
+        asyncio.create_task(self._handle_user_request_update_profile(frontend_request))
+
+    async def handle_command_conversation_recovery(self, frontend_request: WSInput):
+        if not self.websocket.uid:
+            raise Exception("uid is required for conversation recovery")
+        conversations = await self.database_manager.fetch_messages_for_session(
+            self.websocket.uid
+        )
+        conversation_dicts = [
+            MessageSchema().dump(conversation) for conversation in conversations
+        ]
+        await self.send_message_to_frontend(
+            WSOutput(
+                command=frontend_request.command,
+                token=self.new_token,
+                data={"conversations": conversation_dicts},
+            )
+        )
+
+    async def handle_command_link_user_with_conversations(
+        self, frontend_request: WSInput
+    ):
+        if not self.user_id:
+            raise Exception("user_id is required for link user with conversations")
+        if not frontend_request.session_ids:
+            raise Exception("session_ids are required for link user with conversations")
+        await self.database_manager.link_user_with_conversations_by_session_ids(
+            frontend_request.session_ids
+        )
+        await self.story_manager.refresh()
+
+    async def _save_command_message(self, frontend_request: WSInput) -> None:
+        """
+        Save the incoming command message to the database.
+
+        Args:
+            frontend_request (WSInput): The incoming command request.
+        """
+        msg_type = (
             TypeEnum.chat
             if frontend_request.command == Command.USER_MESSAGE
             else TypeEnum.command
-        )        
-        await self.database_manager.add_message(self.user_id, self.websocket.uid, frontend_request.command, OriginEnum.user, msg_type, frontend_request.model_dump())
+        )
+        await self.database_manager.add_message(
+            self.user_id,
+            self.websocket.uid,
+            frontend_request.command,
+            OriginEnum.user,
+            msg_type,
+            frontend_request.model_dump(),
+        )
         await self.story_manager.refresh()
 
-        ## HANDLEING EACH COMMAND POSSIBILITY
-        if frontend_request.command == Command.NEW_TALE:
-            if await self.check_last_story_finished_correctly(self.user_id):
-                asyncio.create_task(self._handle_new_tale())
+    async def _handle_conversation_recovery(self, frontend_request: WSInput) -> None:
+        """
+        Handle the conversation recovery command.
 
-        elif frontend_request.command == Command.SPIN_OFF:
-            if not frontend_request.story_id:
-                raise Exception("story_id is required for spin-off")
-            asyncio.create_task(self._handle_spin_off_tale(frontend_request))
+        Args:
+            frontend_request (WSInput): The incoming command request.
+        """
+        if not self.websocket.uid:
+            raise ValueError("uid is required for conversation recovery")
 
-        elif frontend_request.command == Command.UPDATE_PROFILE:
-            if not frontend_request.profile_id:
-                raise Exception("profile_id is required for update profile")
+        conversations = await self.database_manager.fetch_messages_for_session(
+            self.websocket.uid
+        )
+        conversation_dicts = [
+            MessageSchema().dump(conversation) for conversation in conversations
+        ]
 
-            asyncio.create_task(
-                self._handle_user_request_update_profile(frontend_request)
+        await self.send_message_to_frontend(
+            WSOutput(
+                command=frontend_request.command,
+                token=self.new_token,
+                data={"conversations": conversation_dicts},
+            )
+        )
+
+    async def _handle_link_user_with_conversations(
+        self, frontend_request: WSInput
+    ) -> None:
+        """
+        Handle the link user with conversations command.
+
+        Args:
+            frontend_request (WSInput): The incoming command request.
+        """
+        if not self.user_id:
+            raise ValueError("user_id is required for link user with conversations")
+
+        if not frontend_request.session_ids:
+            raise ValueError(
+                "session_ids are required for link user with conversations"
             )
 
-        # CONVERSATION RECOVERY
-        # this command is necesary to recover a current and not finished conversation
-        # the recover is based on CHAT TABLE records
-        #
-        elif frontend_request.command == Command.CONVERSATION_RECOVERY:
-            if not self.websocket.uid:
-                raise Exception(
-                    "uid is required for conversation recovery"
-                )  # SESSION/CONVERSATION ID
+        await self.database_manager.link_user_with_conversations_by_session_ids(
+            frontend_request.session_ids
+        )
+        await self.story_manager.refresh()
 
-            # read current conversation (CHAT ID)
-            conversations = await self.database_manager.fetch_messages_for_session(
-                self.websocket.uid
+    async def _send_error_message(self, message: str) -> None:
+        """
+        Send an error message to the frontend.
+
+        Args:
+            message (str): The error message to send.
+        """
+        await self.send_message_to_frontend(
+            WSOutput(
+                command=Command.MESSAGE_FOR_HUMAN, token=self.new_token, message=message
             )
-            conversation_dicts = [
-                MessageSchema().dump(conversation) for conversation in conversations
-            ]
-            # send full conversation to CLIENTE/USER (to rebuild it)
-            await self.send_message_to_frontend(
-                WSOutput(
-                    command=frontend_request.command,
-                    token=self.new_token,
-                    data={"conversations": conversation_dicts},
-                )
-            )
-
-        # ASSOCIATE USER WITH CONVERSATIONS
-        elif frontend_request.command == Command.LINK_USER_WITH_CONVERSATIONS:
-            if not self.user_id:
-                raise Exception("user_id is required for link user with conversations")
-
-            if not frontend_request.session_ids:
-                raise Exception(
-                    "session_ids is required for link user with conversations"
-                )  # SESSION/CONVERSATION ID
-
-            await self.database_manager.link_user_with_conversations_by_session_ids(
-                frontend_request.session_ids
-            )
-            await self.story_manager.refresh()
-
-        elif frontend_request.command == Command.USER_MESSAGE:
-            # asyncio.create_task(self._handle_user_message(frontend_request))
-            await self._handle_user_message(frontend_request)
-
-        elif frontend_request.command == Command.USER_LOGGED_IN:
-            # asyncio.create_task(self.check_last_story_finished_correctly(self.user_id))
-            await self.check_last_story_finished_correctly(self.user_id)
-
-        logger.info(f"Processed command: {frontend_request.command}")
-
-        await self.send_working_command_to_frontend(False)
+        )
 
     async def fetch_latest_story_for_user(self, user_id):
         """
@@ -391,11 +704,9 @@ class MagicTalesCoreOrchestrator:
                 "Session is closed or invalid when trying to resume the story."
             )
             return
-        
+
         if not self.latest_story:
-            logger.error(
-                "Last story that we are supposed to recover from, is None!"
-            )
+            logger.error("Last story that we are supposed to recover from, is None!")
             return
 
         try:
@@ -452,7 +763,14 @@ class MagicTalesCoreOrchestrator:
                 )
 
         # Now `details_serialized` contains only JSON-serializable types
-        await self.database_manager.add_message(self.user_id, self.websocket.uid, output_model.command, OriginEnum.ai, TypeEnum.chat, details_serialized)
+        await self.database_manager.add_message(
+            self.user_id,
+            self.websocket.uid,
+            output_model.command,
+            OriginEnum.ai,
+            TypeEnum.chat,
+            details_serialized,
+        )
         await self.story_manager.refresh()
 
     async def create_progress_update(self, **kwargs) -> WSOutput:
@@ -520,8 +838,6 @@ class MagicTalesCoreOrchestrator:
             )
             asyncio.create_task(self.handle_assistant_requests(ai_message_for_system))
 
-        
-
     async def _handle_user_request_update_profile(self, request: WSInput) -> None:
         """
         Handle the 'user_request_update_profile' command by retrieving user information from the database, creating a chat where the user might night give us new information about this profile.
@@ -568,7 +884,7 @@ class MagicTalesCoreOrchestrator:
 
         Returns:
             None.
-        """
+        """        
         request_message = (
             request_message.replace("{user_info}", f"{self.user_dict}")
             + " Use strictly the same language that is being used in the conversation."
@@ -579,7 +895,7 @@ class MagicTalesCoreOrchestrator:
         # asyncio.create_task(self._handle_user_message(request_message))
         await self._handle_user_message(request_message)
 
-    async def _fetch_user_data_and_update_knowledge_base(self) -> None:
+    async def _fetch_user_data_and_update_knowledge_base(self) -> List[str]:
         """
         Retrieves user data from the database and creates a knowledge base file.
 
@@ -587,7 +903,7 @@ class MagicTalesCoreOrchestrator:
             List[str]: List of file paths to the created knowledge base files.
         """
         if self.user_id is None:
-            return
+            return []
 
         # Retrieve user data from the database
         user, profiles, stories = await self._query_user_data()
@@ -602,8 +918,7 @@ class MagicTalesCoreOrchestrator:
             self.config.output_artifacts.knowledge_base_root_dir,
         )
         # Ensure files_paths is a list, even if it's empty
-        files_paths = files_paths or []
-        await self.chat_assistant.update_assistant(files_paths=files_paths)
+        return files_paths or []
 
     async def _query_user_data(self) -> Tuple[User, List[Profile], List[Story]]:
         """
@@ -736,12 +1051,10 @@ class MagicTalesCoreOrchestrator:
         This method handles the user-facing chat phase, processes the completed chat,
         extracts story elements, and updates the database and knowledge base accordingly.
         """
-        logger.info("Starting User-Facing chat Phase")
+        logger.info("Starting User-Facing chat Phase")        
 
-        self.chat_completed = False
-
-        # Wait for chat to complete
-        await self.chat_assistant.wait_for_chat_completion()
+        # Wait for chat to complete using the queue
+        await self.chat_completed_queue.get()
 
         # Process the completed chat
         await self.on_chat_completed(await self.chat_assistant._retrieve_messages())
@@ -774,36 +1087,9 @@ class MagicTalesCoreOrchestrator:
 
         command = ai_message_for_system.command
 
-        if command == Command.CHAT_COMPLETED  and not self.chat_completed:
-            logger.info("Chat completed.")
-            self.profile_id = ai_message_for_system.profile_id
-            logger.info(f"Profile extracted:{self.profile_id}")
-
-            # Ensure there is a profile associated with the story
-            if not self.profile_id:
-                logging.error(
-                    "Profile ID is required but not provided by the assistant at 'chat_completed' event. Asking assistant to solve"
-                )
-                await self._generate_and_send_update_message_for_user(
-                    self.config.updates_request_prompts.no_profile_id
-                )
-                return
-
-            current_profile = await self.database_manager.fetch_profile_by_id(
-                self.profile_id
-            )
-            if not current_profile:
-                logging.error(
-                    "No profile found with the given ID by the assistant at 'chat_completed' event. Asking assistant to solve"
-                )
-                await self._generate_and_send_update_message_for_user(
-                    self.config.updates_request_prompts.profile_id_does_not_exist
-                )
-                return
-
-            self.chat_assistant.chat_completed_event.set()
-            self.chat_completed = True
-            return
+        if command == Command.CHAT_COMPLETED:  
+            await self._handle_chat_completed(ai_message_for_system)
+            return            
 
         if command == Command.CONTINUE_STORY_CREATION:
             if ai_message_for_system.message == "true":
@@ -818,7 +1104,8 @@ class MagicTalesCoreOrchestrator:
                 self.config.updates_request_prompts.updating_profile
             )
             await self._update_profile_from_chat(ai_message_for_system)
-            await self._fetch_user_data_and_update_knowledge_base()
+            files_paths = await self._fetch_user_data_and_update_knowledge_base()
+            await self.chat_assistant.update_assistant(files_paths=files_paths)
             return
 
         if command == Command.NEW_PROFILE:
@@ -828,8 +1115,44 @@ class MagicTalesCoreOrchestrator:
             await self.database_manager.create_profile_from_chat_details(
                 self.user_id, ai_message_for_system.message
             )
-            await self._fetch_user_data_and_update_knowledge_base()
+            files_paths = await self._fetch_user_data_and_update_knowledge_base()
+            await self.chat_assistant.update_assistant(files_paths=files_paths)
             await self.story_manager.refresh()
+
+    async def _handle_chat_completed(self, ai_message_for_system: WSInput) -> None:
+        """
+        Handles the chat completion command from the AI assistant.
+        """
+        logger.info("Chat completed request.")
+        self.profile_id = ai_message_for_system.profile_id
+        logger.info(f"Profile extracted:{self.profile_id}")
+
+        # Ensure there is a profile associated with the story
+        if not self.profile_id:
+            logging.error(
+                "Profile ID is required but not provided by the assistant at 'chat_completed' event. Asking assistant to solve"
+            )
+            await self._generate_and_send_update_message_for_user(
+                self.config.updates_request_prompts.no_profile_id
+            )
+            return
+
+        logger.info("Fetching full profile for story generation")
+        current_profile = await self.database_manager.fetch_profile_by_id(
+            self.profile_id
+        )
+        if not current_profile:
+            logging.error(
+                "No profile found with the given ID by the assistant at 'chat_completed' event. Asking assistant to solve"
+            )
+            await self._generate_and_send_update_message_for_user(
+                self.config.updates_request_prompts.profile_id_does_not_exist
+            )
+            return
+
+        await self.chat_completed_queue.put(True)        
+
+        logger.info("Chat completed command was successful.")
 
     async def _update_profile_from_chat(self, ai_message_for_system: WSInput):
         """
@@ -915,12 +1238,15 @@ class MagicTalesCoreOrchestrator:
         chat_lines = []
         for msg in messages:
             for content in msg.content:
-                # Check if the content is of type MessageContentText and extract text
-                if isinstance(content, MessageContentText):
+                # Check if the content is of type TextContentBlock and extract text
+                if isinstance(content, TextContentBlock):
                     chat_lines.append(f"{msg.role}: {content.text}")
-                # Optionally handle MessageContentImageFile types differently, e.g., by noting an image was present
-                # else if isinstance(content, MessageContentImageFile):
-                #     chat_lines.append(f"{msg.role}: [Image content]")
+                # Optionally handle ImageFileContentBlock types differently, e.g., by noting an image was present
+                elif isinstance(content, ImageFileContentBlock):
+                    chat_lines.append(f"{msg.role}: [Image file content]")
+                # Optionally handle ImageURLContentBlock types differently, e.g., by noting an image was present
+                elif isinstance(content, ImageURLContentBlock):
+                    chat_lines.append(f"{msg.role}: [Image URL content]")
         return "\n".join(chat_lines)
 
     async def _extract_chat_key_elements(self, chat_string: str) -> Dict:
@@ -938,7 +1264,7 @@ class MagicTalesCoreOrchestrator:
         )
 
         story_synopsis, _ = await self.helper_assistant.request_ai_response(
-            f"Extract the latest agreed upon with the user story synopsis from this conversation:\n{chat_string}"
+            f"Extract the latest agreed upon with the user story synopsis from this conversation. Make sure you capture all the latest details about characters, plot, theme, story flow, language, etc. Do not miss anything that has been agreed upon, as all these details are crucial for the generation of the perfect story. Here's the conversation:\n{chat_string}"
         )
 
         story_title, _ = await self.helper_assistant.request_ai_response(
@@ -1035,17 +1361,41 @@ class MagicTalesCoreOrchestrator:
         """
         Generate a story based on the provided inputs.
 
+        This method ensures that all necessary components for the story are available,
+        and it handles failures to ensure that the story generation process either
+        completes successfully or provides clear diagnostics for any issues encountered.
+
+
         Generates:
             List[Dict[str, str]]: A list of dictionaries, each containing the chapter title and content.
 
         Resturns:
             None
         """
-        self.story_manager.refresh()
+        # Attempt to refresh story and profile data
+        try:
+            await self._generate_and_send_update_message_for_user(
+                self.config.updates_request_prompts.generating_story
+            )
 
-        await self._generate_and_send_update_message_for_user(
-            self.config.updates_request_prompts.generating_story
-        )
+            await self.story_manager.refresh(raise_error=True)
+            story_blueprint = await self.story_manager.get_story_blueprint()
+
+        except Exception as e:
+            logger.error(f"Failed to initialize story generation: {e}")
+            if self.latest_story and self.latest_story.id:
+                try:
+                    await self.story_manager.load_story(self.latest_story.id)
+                    story_blueprint = await self.story_manager.get_story_blueprint()
+                except Exception as load_error:
+                    logger.error(f"Failed to load the latest story: {load_error}")
+                    raise RuntimeError(
+                        "Unable to proceed with story generation due to initialization failure."
+                    )
+            else:
+                raise RuntimeError(
+                    "No latest story available to fallback to and cannot generate new story."
+                )
 
         # Initialize a list to hold the chapters
         chapters = []
@@ -1069,12 +1419,7 @@ class MagicTalesCoreOrchestrator:
         # Step 3: Chapter Generation
         chapters_folder = os.path.join(
             self.story_manager.story.story_folder, self.subfolders["chapters"]
-        )        
-
-        try:
-            story_blueprint= await self.story_manager.get_story_blueprint()
-        except:
-            self.story_manager.load_story(self.latest_story.story_id)
+        )
 
         for chapter_number in range(1, num_chapters + 1):
             message = f"Generating chapter: {chapter_number} of {num_chapters}"
@@ -1099,6 +1444,7 @@ class MagicTalesCoreOrchestrator:
             chapters.append({"title": chapter_title, "content": chapter_content})
             previous_chapter_content = chapter_content
 
+        # Update in-memory story data
         self.story_manager.in_mem_story_data.chapters = chapters
         return
 
@@ -1182,9 +1528,9 @@ class MagicTalesCoreOrchestrator:
                 chapter_number=chapter_number,
                 total_number_chapters=total_number_chapters,
             )
-            chapter_content = best_chapter.get("chapter_generator_response_dict", {}).get(
-                "content", ""
-            )
+            chapter_content = best_chapter.get(
+                "chapter_generator_response_dict", {}
+            ).get("content", "")
             if chapter_content == "":
                 raise Exception("Failed to generate a chapter. Please try again.")
 
@@ -1290,7 +1636,7 @@ class MagicTalesCoreOrchestrator:
 
         logger.info("Initiating image generation process.")
 
-        self.story_manager.refresh()
+        # await self.story_manager.refresh()
 
         all_chapter_prompts = self.story_manager.in_mem_story_data.image_prompts
         story_directory = self.story_manager.story.story_folder
@@ -1315,7 +1661,7 @@ class MagicTalesCoreOrchestrator:
 
         for chapter_number, image_prompt, image_prompt_index in flat_image_prompts:
             filename = f"Chapter_{chapter_number}_Image_{image_prompt_index}.png"
-            message = f"Generating image for Chapter {chapter_number}, Image {image_prompt_index}"
+            message = f"Generating Chapter {chapter_number}, illustration {image_prompt_index+1}"
             logger.info(message)
             update = await self.create_progress_update(
                 story_state=str(StoryState.IMAGE_GENERATION),
@@ -1393,7 +1739,7 @@ class MagicTalesCoreOrchestrator:
         message = f"Starting document generation..."
         logger.info(message)
 
-        self.story_manager.refresh()
+        # await self.story_manager.refresh()
 
         try:
 
@@ -1439,6 +1785,7 @@ class MagicTalesCoreOrchestrator:
             )
             await self.send_message_to_frontend(update)
 
-            await self._fetch_user_data_and_update_knowledge_base()
+            files_paths = await self._fetch_user_data_and_update_knowledge_base()
+            await self.chat_assistant.update_assistant(files_paths=files_paths)
 
             await self.send_working_command_to_frontend(False)

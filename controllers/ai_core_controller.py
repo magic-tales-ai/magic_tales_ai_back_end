@@ -10,7 +10,7 @@ from services.orchestrator.orchestrator import MagicTalesCoreOrchestrator
 from services.message_sender import MessageSender
 from services.session_service import check_token
 
-from models.ws_input import WSInput
+from magic_tales_models.models.ws_input import WSInput
 
 ai_core_router = APIRouter(prefix="/bot", tags=["Bot"])
 
