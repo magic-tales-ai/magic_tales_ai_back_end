@@ -6,9 +6,9 @@ after_feching_user_data: "User/n{user_info}/n has been already greeted, so don't
 
 chat_completed: "User/n{user_info}/n has been already greeted, so don't greet them again. Very briefly, give the user an update that we are moving into the next set of steps that will lead to the creation of the full story. The steps are, creation of the story which include all the chapters if more than one, then creating the illustrations, and finally putting the document together to be downloaded.  Remember that this is what they see every time they log in, so they might see this message over and over. Be aware of this when creating it."
 
-updating_profile: "Very Briefly inform the user/n{user_info}/n in a friendly manner that their profile is being updated with the info they provided. Express sincere gratitude for their patience and assure them of updates for an amazing experience."
+profile_updated: "Very Briefly inform the user/n{user_info}/n in a friendly manner that their profile has been updated succesfully with the info they provided. Express sincere gratitude for their patience. You and the user can continue where you left off."
 
-creating_new_profile: "Share the good news with the user/n{user_info}/n very concisely and warmly that their new profile is being created using their input. Convey heartfelt thanks for their patience and promise updates for a great experience."
+profile_created: "Share the good news with the user/n{user_info}/n very concisely and warmly that their new profile has been succesfuly created using their input. Express sincere gratitude for their patience. You and the user can continue where you left off."
 
 chat_info_extraction: "Let the user/n{user_info}/n know very concisely and affably that you're carefully reviewing your conversation to gather key details for the AI team crafting their perfect story. Show appreciation for their patience and guarantee regular updates for an exceptional experience."
 
@@ -16,8 +16,20 @@ generating_story_title: "Inform the user/n{user_info}/n very briefly that you're
 
 generating_story: "Share the exciting update with the user/n{user_info}/n very concisely and cordially that the AI team, with you as their guide, is starting to weave their story. Sincerely thank them for their patience and promise frequent updates for a truly fantastic experience."
 
-no_profile_id: "You forgot to provide a profile_id when you triggered the end of the chat. Make sure you find out from the user and from the files attached, what profile_id are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
+no_profile_id_at_chat_completion: "You forgot to provide a profile_id when you triggered the end of the chat. Make sure you find out from the user and from the files attached, what profile_id are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
+
+no_profile_id_at_update_profile: "You forgot to provide a profile_id when you triggered an 'update_profile' command. Make sure you find out from the user and from the files attached, what profile id are we going to use to update the profile"
+
+no_profile_record_at_update_profile: "You provided a profile_id when you triggered an 'update_profile' command, but there is NO PROFILE ON THE DB matching this id. Make sure you find out from the user and from the files attached, what profile 'id' are we going to use to update the profile."
+
+no_info_at_update_profile: "Name, age and details are required for a profile update, but one or more were NOT provided when you triggered an 'update_profile' command. Make sure you provide the correct information the user wants to update. Also make sure you both have agreed what profile (id) to update."
+
+no_info_at_create_profile: "Name, age and details are required to create a new profile, but one or more were NOT provided when you triggered a 'new_profile' command. Make sure you provide the correct information the user wants to use for their new profile. Also make sure the user is aware and in full agreement that we are going to create a new profile."
 
 profile_id_does_not_exist: "The profile_id you provided does NOT match any record on the database. Make sure you find out from the user and from the files attached, what profile_id are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
 
 incomplete_story_found: "Very Briefly ASK the user/n{user_info}/n in a friendly manner that we found that their last story was not finished correctly (Somehow the creation process got interrupted) and we WANT to know if they want to continue where we left it off"
+
+continue_where_we_left_off_response_missing_or_incorrect: "You sent a 'continue_story_creation' command but you either forgot to provide the user ANSWER within the 'continue_where_we_left_off' part of the json message or it was not a 'true' or 'false' response. Make sure you find out from the user (not invented by you) whether they want to continue their last story we found that was not finished correctly (Somehow the creation process got interrupted) or not, and write it in the correct format."
+
+no_command: "You sent a command to the system, but you forgot to provide the 'command' part of the json message. Please try again and look at your instructions for details on what commands you can send."

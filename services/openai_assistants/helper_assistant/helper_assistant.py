@@ -1,13 +1,9 @@
-import os
-import json
 import logging
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Optional, Tuple
 
 
 from services.utils.log_utils import get_logger
 from services.openai_assistants.assistant import Assistant
-from magic_tales_models.models.user import User
-from magic_tales_models.models.ws_input import WSInput
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +14,7 @@ class HelperAssistant(Assistant):
 
     def _default_parsing(
         self, ai_message_content: str
-    ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
         """
         Robustly parses AI response content, extracting `message_for_human`, creating a WSInput instance for `message_for_system AND pass over the error if it occurs.
         """

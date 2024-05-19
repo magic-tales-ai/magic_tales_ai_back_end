@@ -130,6 +130,7 @@ class Assistant(ABC):
                 model=self.config.model,
                 name=self.config.name,
                 instructions=instructions,
+                temperature=self.config.temperature,
                 tools=self.config.tools,
                 tool_resources=tool_resources,
             )
@@ -336,7 +337,7 @@ class Assistant(ABC):
 
     async def _process_ai_response(
         self, messages_data: List, parsing_method: Optional[Callable] = None
-    ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
         """
         Processes the OpenAI assistant's latest response.
 
@@ -345,7 +346,7 @@ class Assistant(ABC):
             parsing_method (Callable, optional): A method to parse the AI response.
 
         Returns:
-            Tuple[str, WSInput, str]: A tuple of the AI's response for the human, the system command and any error that might have occured.
+            Tuple[str, dict, str]: A tuple of the AI's response for the human, the system command and any error that might have occured.
 
         Raises:
             Exception: If processing the response fails.
@@ -368,9 +369,9 @@ class Assistant(ABC):
     @abstractmethod
     def _default_parsing(
         self, ai_message_content: str
-    ) -> Tuple[Optional[str], Optional[WSInput], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
         """
-        Robustly parses AI response content, extracting `message_for_human` and creating a WSInput instance for `message_for_system`.
+        Robustly parses AI response content, extracting `message_for_human` and creating a dict instance for `message_for_system`.
         """
         pass
 
