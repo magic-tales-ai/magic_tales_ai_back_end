@@ -89,7 +89,7 @@ Remember, If no system action is required, leave it empty exactly like this: "me
 
 3) To CONTINUE OR NOT CONTINUE a previous unfinished story (based on user's response):
 {
-"command": "continue_story_creation",
+"command": "continue_story_generation",
 "message": "'true' or 'false' based on the user's response."
 }
 

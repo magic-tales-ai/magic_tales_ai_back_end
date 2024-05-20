@@ -79,8 +79,7 @@ class MagicTalesCoreOrchestrator:
     Core orchestrator for Magic Tales application. Manages the story generation process.
     """    
     
-    steps_execution_mapping: Dict[StoryState, str] = {
-        StoryState.USER_FACING_CHAT: "_user_facing_chat",
+    steps_execution_mapping: Dict[StoryState, str] = {        
         StoryState.STORY_GENERATION: "_generate_story",
         StoryState.IMAGE_PROMPT_GENERATION: "_generate_image_prompts",
         StoryState.IMAGE_GENERATION: "_generate_images",
@@ -125,16 +124,13 @@ class MagicTalesCoreOrchestrator:
         self.token_data = None
 
         self.user_id = None
-        self.user_dict = {}
-        self.profile_id = None
+        self.user_dict = {}        
         self.latest_story = None
 
         self.new_token = None
 
         self.token_refresh_interval = 120  # 2 minutes in seconds
-        self.token_refresh_task = None
-
-        self.chat_completed_queue = asyncio.Queue()
+        self.token_refresh_task = None        
 
         self.database_manager = DatabaseManager(session=session)
 
@@ -231,7 +227,7 @@ class MagicTalesCoreOrchestrator:
         await self._initialize_assistants(assistant_id, helper_id, files_paths)
 
         user_message = self._generate_starting_message(try_mode=try_mode)
-        await self._generate_and_send_update_message_for_user(user_message)
+        asyncio.create_task(self._generate_and_send_update_message_for_user(user_message))
 
         await self.story_manager.refresh()
 
@@ -479,9 +475,9 @@ class MagicTalesCoreOrchestrator:
                     f"Last story completed step was: {StoryState(self.latest_story.last_successful_step).name}"
                 )
                 # Process to resume the story
-                await self._generate_and_send_update_message_for_user(
+                asyncio.create_task(self._generate_and_send_update_message_for_user(
                     self.config.updates_request_prompts.incomplete_story_found
-                )
+                ))
                 return False
         else:
             # Log that no story is available; await user action to start new.
@@ -516,7 +512,7 @@ class MagicTalesCoreOrchestrator:
             if self.story_manager.story:
                 last_step = await self.story_manager.get_last_step()
                 logger.info(f"Resuming story generation from step: {str(last_step)}")
-                await self._process_story_creation_step(last_step)
+                await self._process_story_generation_step(last_step)
             else:
                 logger.info("No saved state found, awaiting user action.")
                 # Clean up if no story data was found
@@ -645,8 +641,7 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("Updating profile.")
 
-        # await self._reset()
-        # await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
+        # await self._reset()        
 
     async def _handle_spin_off_tale(self, request: WSInput) -> None:
         """
@@ -657,8 +652,7 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("Starting a spin-off story generation.")
 
-        await self._reset()
-        await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
+        await self._reset()        
 
     async def _handle_new_tale(self) -> None:
         """
@@ -669,7 +663,9 @@ class MagicTalesCoreOrchestrator:
         """
         logger.info("Starting story generation from scratch.")
         await self._reset()
-        await self._process_story_creation_step(StoryState.USER_FACING_CHAT)
+        asyncio.create_task(self._generate_and_send_update_message_for_user(
+                    self.config.updates_request_prompts.new_tale_clicked
+                ))        
 
     async def _generate_and_send_update_message_for_user(
         self, request_message: str
@@ -738,7 +734,7 @@ class MagicTalesCoreOrchestrator:
 
         return user, profiles, stories
 
-    async def _process_story_creation_step(
+    async def _process_story_generation_step(
         self, current_step: StoryState, **kwargs
     ) -> None:
         """
@@ -766,11 +762,7 @@ class MagicTalesCoreOrchestrator:
                     break
             else:
                 logger.error(f"No method found for step {current_step}")
-                break
-
-        # # Cancel the token refresh task when the story generation process is completed or fails
-        # if self.token_refresh_task:
-        #     self.token_refresh_task.cancel()
+                break        
 
         if current_step is StoryState.FINAL_DOCUMENT_GENERATED:
             logger.info("Story generation process completed.")
@@ -827,21 +819,6 @@ class MagicTalesCoreOrchestrator:
         await self.story_manager.update_story_step(step)
         logger.info(f"Story state updated to {step.name}")
 
-    async def _user_facing_chat(self) -> None:
-        """
-        Start and run the WebSocket server to gather user information through a chat with the GUI.
-
-        This method handles the user-facing chat phase, processes the completed chat,
-        extracts story elements, and updates the database and knowledge base accordingly.
-        """
-        logger.info("Starting User-Facing chat Phase")
-
-        # Wait for chat to complete using the queue
-        await self.chat_completed_queue.get()
-
-        # Process the completed chat
-        await self.on_chat_completed(await self.chat_assistant._retrieve_messages())
-
     def _generate_starting_message(self, try_mode: bool = False) -> str:
         """
         Generates a starting message for the user based on the presence of a knowledge base.
@@ -856,7 +833,7 @@ class MagicTalesCoreOrchestrator:
 
     async def handle_assistant_requests(self, ai_message_for_system: dict) -> None:
         """
-        Processes the Chat AI Assistant message.
+        Processes the Chat AI Assistant requests/commands.
         """
         logger.info(
             f"Processing AI message for Magic-Tales Orchestrator: {ai_message_for_system}"
@@ -871,17 +848,17 @@ class MagicTalesCoreOrchestrator:
         command = ai_message_for_system.get("command", None)
 
         if not command:
-            await self._generate_and_send_update_message_for_user(
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.no_command
-            )
+            ))
             return
 
-        if command == Command.CHAT_COMPLETED:
-            await self._handle_chat_completed(ai_message_for_system)
+        if command == Command.START_STORY_GENERATION:
+            await self._handle_start_story_generation(ai_message_for_system)
             return
 
         if (
-            command == Command.CONTINUE_STORY_CREATION
+            command == Command.CONTINUE_STORY_GENERATION
             and self.wait_for_response_to_continue_where_we_left_off
         ):
             await self._handle_continue_where_we_left_off_response(
@@ -893,9 +870,9 @@ class MagicTalesCoreOrchestrator:
             if await self._update_profile_from_chat(ai_message_for_system):
                 files_paths = await self._fetch_user_data_and_update_knowledge_base()
                 await self.chat_assistant.update_assistant(files_paths=files_paths)
-                await self._generate_and_send_update_message_for_user(
+                asyncio.create_task(self._generate_and_send_update_message_for_user(
                     self.config.updates_request_prompts.profile_updated
-                )
+                ))
                 await self.story_manager.refresh()
             return
 
@@ -903,46 +880,96 @@ class MagicTalesCoreOrchestrator:
             if await self._create_new_profile_from_chat(ai_message_for_system):
                 files_paths = await self._fetch_user_data_and_update_knowledge_base()
                 await self.chat_assistant.update_assistant(files_paths=files_paths)
-                await self._generate_and_send_update_message_for_user(
+                asyncio.create_task(self._generate_and_send_update_message_for_user(
                     self.config.updates_request_prompts.profile_created
-                )
+                ))
                 await self.story_manager.refresh()
             return
 
-    async def _handle_chat_completed(self, ai_message_for_system: dict) -> None:
+    async def _check_for_all_info_to_start_story_generation(self, ai_message_for_system: dict) -> bool:
         """
-        Handles the chat completion command from the AI assistant.
+        Checks if the AI message contains all required information to start story generation.
+
+        Args:
+            ai_message_for_system (dict): The message_for_system dictionary from the AI response.
+
+        Returns:
+            bool: True if all required information is present, False otherwise.
         """
-        logger.info("Chat completed request.")
-        self.profile_id = ai_message_for_system.get("profile_id", None)
-        logger.info(f"Profile extracted:{self.profile_id}")
 
-        # Ensure there is a profile associated with the story
-        if not self.profile_id:
-            logging.error(
-                "Profile ID is required but not provided by the assistant at 'chat_completed' event. Asking assistant to solve"
-            )
-            await self._generate_and_send_update_message_for_user(
-                self.config.updates_request_prompts.no_profile_id_at_chat_completion
-            )
-            return
+        required_keys = {"profile_id"} #, "story_features", "story_synopsis", "story_title", "num_chapters"}
+        missing_keys = required_keys - set(ai_message_for_system.keys())
 
-        logger.info("Fetching full profile for story generation")
-        current_profile = await self.database_manager.fetch_profile_by_id(
-            self.profile_id
-        )
+        if missing_keys:
+            logger.error(f"Missing required keys in message_for_system: {missing_keys}")
+
+            # Craft a clear message to the assistant, specifying the missing keys
+            update_message = self.config.updates_request_prompts.missing_keys_at_start_story_generation.format(missing_keys=", ".join(missing_keys))
+            asyncio.create_task(self._generate_and_send_update_message_for_user(update_message))
+            
+            return False
+
+        # Additional Validation:
+        profile_id = ai_message_for_system["profile_id"]
+
+        try:
+            profile_id = int(profile_id)  # Ensure profile_id is an integer
+        except ValueError:
+            logger.error("Invalid profile_id: Expected an integer")
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
+                self.config.updates_request_prompts.invalid_profile_id_at_start_story_generation
+            ))
+            return False
+
+        # # Additional Validation: (NOTE: I'm missing the max num of chapters on the assistant instructions.)
+        # num_chapters = ai_message_for_system["num_chapters"]
+
+        # try:
+        #     num_chapters = int(num_chapters)  # Ensure num_chapters is an integer and is between 1-10
+        #     if not 1 <= num_chapters <= self.config.output_artifacts.max_num_chapters:
+        #         raise ValueError
+        # except ValueError:
+        #     logger.error(f"Invalid num_chapters: Expected an integer that also must between 1-{self.config.output_artifacts.max_num_chapters}")
+        #     update_message = self.config.updates_request_prompts.invalid_num_chapters_at_start_story_generation.format(max_num_chapters=", ".join(self.config.output_artifacts.max_num_chapters)
+        #     )
+        #     asyncio.create_task(self._generate_and_send_update_message_for_user(update_message)
+                
+        #     return False
+
+        # Fetch and validate the profile
+        current_profile = await self.database_manager.fetch_profile_by_id(profile_id)
         if not current_profile:
-            logging.error(
-                "No profile found with the given ID by the assistant at 'chat_completed' event. Asking assistant to solve"
-            )
-            await self._generate_and_send_update_message_for_user(
+            logger.error(f"No profile found with ID: {profile_id}")
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.profile_id_does_not_exist
-            )
-            return
+            ))
+            return False
+        
+        return True
 
-        await self.chat_completed_queue.put(True)
+        
+    async def _handle_start_story_generation(self, ai_message_for_system: dict) -> None:
+        """
+        Handles the start_story_generation command from the AI assistant.
+        """
+        logger.info("start_story_generation request.")
+        ok_to_proceed  = await self._check_for_all_info_to_start_story_generation(ai_message_for_system)
 
-        logger.info("Chat completed command was successful.")
+        if ok_to_proceed:
+            logger.info("Updating the database with new story elements from chat")
+            ## story_info_dict = ai_message_for_system
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
+            self.config.updates_request_prompts.chat_info_extraction
+    ))
+            story_info_dict = await self._extract_chat_key_elements(await self.chat_assistant._retrieve_messages())
+            story_info_dict["profile_id"] = ai_message_for_system["profile_id"]
+            await self.create_story_foundation_from_chat_elements(story_info_dict)
+            logger.info("Database updated with new story elements from chat")
+            await self._process_story_generation_step(StoryState.STORY_GENERATION)
+
+        # If we get here, we must have finished the story!
+        return
+
 
     async def _handle_continue_where_we_left_off_response(
         self, ai_message_for_system: dict
@@ -965,9 +992,9 @@ class MagicTalesCoreOrchestrator:
             logging.error(
                 "'Continue where we left off' command by the assistant had no response. Asking assistant to solve it"
             )
-            await self._generate_and_send_update_message_for_user(
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.continue_where_we_left_off_response_missing_or_incorrect
-            )
+            ))
             return
 
         self.wait_for_response_to_continue_where_we_left_off = False
@@ -990,9 +1017,9 @@ class MagicTalesCoreOrchestrator:
             logging.error(
                 "Profile ID is required for profile update, but not provided by the assistant. Asking assistant to solve"
             )
-            await self._generate_and_send_update_message_for_user(
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.no_profile_id_at_update_profile
-            )
+            ))
             return False
         
         profile = await self.database_manager.session.get(Profile, profile_id)        
@@ -1000,9 +1027,9 @@ class MagicTalesCoreOrchestrator:
             logging.error(
                 "Profile record with this id does not exist on the DB. Asking assistant to solve"
             )
-            await self._generate_and_send_update_message_for_user(
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.no_profile_record_at_update_profile
-            )
+            ))
             return False
 
         logger.info(f"Profile extracted:{profile_id}")
@@ -1016,9 +1043,9 @@ class MagicTalesCoreOrchestrator:
             logging.error(
                 "Name, age and details are required for profile update, but one or more were NOT provided by the assistant. Asking assistant to solve"
             )
-            await self._generate_and_send_update_message_for_user(
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.no_info_at_update_profile
-            )
+            ))
             return
 
         logger.info(f"profile UPDATES:\nName:{name}\nAge:{age}\nDetails:{details}")
@@ -1060,9 +1087,9 @@ class MagicTalesCoreOrchestrator:
             logging.error(
                 "Name, age and details are required to create a new profile, but none were provided by the assistant. Asking assistant to solve"
             )
-            await self._generate_and_send_update_message_for_user(
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.no_info_at_create_profile
-            )
+            ))
             return False
 
         logger.info(f"profile UPDATES:\nName:{name}\nAge:{age}\nDetails:{details}")
@@ -1097,32 +1124,7 @@ class MagicTalesCoreOrchestrator:
         # Use the Information Extractor to merge the details.
         merged_details, _ = await self.helper_assistant.request_ai_response(chat_string)
         return merged_details
-
-    async def on_chat_completed(self, messages: List[Any]) -> None:
-        """
-        Callback for handling the completion of the user-facing chat.
-
-        Args:
-            messages (List[ThreadMessage]): List of chat messages with user interactions.
-
-        This method processes the chat messages, extracts relevant story elements,
-        and updates the database and knowledge base.
-        """
-        logger.info("User-Facing chat complete. Processing chat messages.")
-        await self.send_working_command_to_frontend(True)
-
-        await self._generate_and_send_update_message_for_user(
-            self.config.updates_request_prompts.chat_info_extraction
-        )
-
-        chat_string = await self._convert_chat_to_string(messages)
-        updated_elements = await self._extract_chat_key_elements(chat_string)
-
-        logger.info("Updating the database with new story elements from chat")
-        await self.create_story_foundation_from_chat_elements(updated_elements)
-
-        logger.info("Database updated with new story elements from chat")
-
+    
     async def _convert_chat_to_string(self, messages: List[Any]) -> str:
         """
         Converts a list of chat messages into a single concatenated string, focusing on text content.
@@ -1162,16 +1164,22 @@ class MagicTalesCoreOrchestrator:
         )
 
         story_synopsis, _ = await self.helper_assistant.request_ai_response(
-            f"Extract the latest agreed upon with the user story synopsis from this conversation. Make sure you capture all the latest details about characters, plot, theme, story flow, language, etc. Do not miss anything that has been agreed upon, as all these details are crucial for the generation of the perfect story. Here's the conversation:\n{chat_string}"
+            f"Extract the latest agreed upon with the user story synopsis in full detail from this conversation. Make sure you capture all the latest details about characters, plot, theme, story flow, language, etc. Do not miss anything that has been agreed upon, as all these details are crucial for the generation of the perfect story. Also review and add to the synopsiis all extra information about the characters, scenes, anything that it was agreed upon on the conversation that could bring more details about what the user wanted. Here's the conversation:\n{chat_string}"
         )
 
         story_title, _ = await self.helper_assistant.request_ai_response(
-            f"Extract only the story title from this synopsis:\n{story_synopsis}.\n\nThe title is:"
+            f"Extract only the story title from this synopsis without any highligthing character such * or #:\n{story_synopsis}.\n\nThe title is:"
         )
+
+        num_chapters, _ = await self.helper_assistant.request_ai_response(
+            f"Extract only the number of chapters, as a single integer, from this synopsis and story features gathred from a conversation. If unknown, deduce what would be an ideal number of chapters between 1 and {self.config.output_artifacts.max_num_chapters} for this story to unfold fully:\nSynopsis:{story_synopsis}\nStory Features:{story_features}.\n\nThe number of chapters is (only an integer, no str allowed):"
+        )        
+
         extracted_info = {
             "story_features": story_features,
             "story_synopsis": story_synopsis,
             "story_title": story_title,
+            "num_chapters": num_chapters,
         }
         logger.info(
             f"We have extracted the following information from the chat:\n{extracted_info}"
@@ -1190,34 +1198,15 @@ class MagicTalesCoreOrchestrator:
             ValueError: If required profile details are missing or incomplete.
             Exception: If unable to create a story due to database or validation errors.
         """
-        if not self.profile_id:
-            logger.error("Profile ID is missing but required for story creation.")
-            raise ValueError("Profile ID is required but not provided.")
-
-        # Fetch the current profile using the DatabaseManager class
-        current_profile = await self.database_manager.fetch_profile_by_id(
-            self.profile_id
-        )
-        if not current_profile:
-            logger.error(f"No profile found for ID: {self.profile_id}")
-            raise ValueError(
-                "No profile found with the given ID. Cannot create a story."
-            )
+        logger.info(f"The information we got to create the new story is:\n{updates}")        
 
         # Extract story elements from updates
+        profile_id = updates.get("profile_id")
         title = updates.get("story_title")
         features = updates.get("story_features")
         synopsis = updates.get("story_synopsis")
-
-        # Validate extracted story elements
-        if not all([title, features, synopsis]):
-            logger.error(
-                "Missing one or more mandatory story elements (title, features, synopsis)"
-            )
-            raise ValueError(
-                f"fMissing mandatory story elements.\nTitle: {title}\nFeatures:{features}\nSynopsis:{synopsis}"
-            )
-
+        num_chapters = updates.get("num_chapters")
+        
         # Define paths for story and image storage based on user-specific directories
         stories_root_dir = os.path.join(
             self.config.output_artifacts.stories_root_dir, f"user_{self.user_id}"
@@ -1230,14 +1219,17 @@ class MagicTalesCoreOrchestrator:
         # Create the story using the StoryManager class
         try:
             await self.story_manager.create_story(
-                profile_id=self.profile_id,
+                profile_id=profile_id,
                 ws_session_uid=self.session.identity_key,  # Session identity key needs to be accurately sourced
                 title=title,
                 features=features,
                 synopsis=synopsis,
                 story_folder=story_folder,
                 images_subfolder=images_subfolder,
+
             )
+            self.story_manager.in_mem_story_data.num_chapters = num_chapters
+
             logger.info(
                 f"Story foundation created successfully with ID: {self.story_manager.story.id}"
             )
@@ -1272,9 +1264,9 @@ class MagicTalesCoreOrchestrator:
         """
         # Attempt to refresh story and profile data
         try:
-            await self._generate_and_send_update_message_for_user(
+            asyncio.create_task(self._generate_and_send_update_message_for_user(
                 self.config.updates_request_prompts.generating_story
-            )
+            ))
 
             await self.story_manager.refresh(raise_error=True)
             story_blueprint = await self.story_manager.get_story_blueprint()
@@ -1298,16 +1290,8 @@ class MagicTalesCoreOrchestrator:
         # Initialize a list to hold the chapters
         chapters = []
 
-        # Step 1: Determine Chapter Count
-        # TODO: Make this chapter count more robust
-        if self.story_manager.in_mem_story_data.num_chapters == 0:
-            num_chapters = await self._determine_chapter_count(
-                self.story_manager.story.features
-            )
-            num_chapters = max(1, num_chapters)
-            self.story_manager.in_mem_story_data.num_chapters = num_chapters
-        else:
-            num_chapters = self.story_manager.in_mem_story_data.num_chapters
+        # Step 1: Chapter Count
+        num_chapters = int(self.story_manager.in_mem_story_data.num_chapters)
 
         logger.info(f"Number of chapters: {num_chapters}")
 
@@ -1320,16 +1304,17 @@ class MagicTalesCoreOrchestrator:
         )
 
         for chapter_number in range(1, num_chapters + 1):
-            message = f"Generating chapter: {chapter_number} of {num_chapters}"
+            message = f"In a few words update the user that we are now, generating chapter: {chapter_number} of {num_chapters}"
             logger.info(message)
 
             update = await self.create_progress_update(
                 story_state=str(StoryState.STORY_GENERATION),
                 status=ResponseStatus.STARTED,
                 progress_percent=(chapter_number / num_chapters) * 100,
-                message=message,
-            )
+                message="",
+            )            
             await self.send_message_to_frontend(update)
+            asyncio.create_task(self._generate_and_send_update_message_for_user(message))
 
             chapter_title, chapter_content = await self._generate_chapter(
                 chapters_folder=chapters_folder,
@@ -1448,15 +1433,17 @@ class MagicTalesCoreOrchestrator:
     async def _generate_image_prompts(self) -> None:
         """Generate image prompts for all chapters in the story."""
 
-        message = f"Generating image prompts for all chapters."
+        message = f"In a few words, tell the user we have entered a new phase in the story generation process. We are now Generating vivid and amazing image descriptions for all chapters."
         logger.info(message)
         update = await self.create_progress_update(
             story_state=str(StoryState.IMAGE_PROMPT_GENERATION),
             status=ResponseStatus.STARTED,
             progress_percent=0,
-            message=message,
+            message="",
         )
         await self.send_message_to_frontend(update)
+        asyncio.create_task(self._generate_and_send_update_message_for_user(message))
+
         image_prompt_generation_mechanism = ImagePromptGenerationMechanism(
             config=self.config
         )
@@ -1533,6 +1520,8 @@ class MagicTalesCoreOrchestrator:
         """
 
         logger.info("Initiating image generation process.")
+        message = f"Update the user in just a few words that we have entered a new phase in the story generation process. We are now going to start creating all the illustrations."
+        asyncio.create_task(self._generate_and_send_update_message_for_user(message))
 
         # await self.story_manager.refresh()
 
@@ -1559,15 +1548,16 @@ class MagicTalesCoreOrchestrator:
 
         for chapter_number, image_prompt, image_prompt_index in flat_image_prompts:
             filename = f"Chapter_{chapter_number}_Image_{image_prompt_index}.png"
-            message = f"Generating Chapter {chapter_number}, illustration {image_prompt_index+1}"
+            message = f"Update the user in just a few words that we are Generating Chapter {chapter_number}, illustration {image_prompt_index+1}"
             logger.info(message)
             update = await self.create_progress_update(
                 story_state=str(StoryState.IMAGE_GENERATION),
                 status=ResponseStatus.STARTED,
                 progress_percent=0,
-                message=message,
+                message="",
             )
             await self.send_message_to_frontend(update)
+            asyncio.create_task(self._generate_and_send_update_message_for_user(message))
 
             try:
                 generated_image_path = image_generator.generate_images(
@@ -1634,7 +1624,8 @@ class MagicTalesCoreOrchestrator:
         """
         Asynchronously creates the final story document with associated images and saves it to the specified directory.
         """
-        message = f"Starting document generation..."
+        message = f"Update the user in a few words that we just entered the last phase of the story generation process. We are now starting the final document generation, where we put everything together: All Chapters and all images, and we create a downloadable file."
+        asyncio.create_task(self._generate_and_send_update_message_for_user(message))
         logger.info(message)
 
         # await self.story_manager.refresh()
@@ -1645,9 +1636,10 @@ class MagicTalesCoreOrchestrator:
                 story_state=str(StoryState.DOCUMENT_GENERATION),
                 status=ResponseStatus.STARTED,
                 progress_percent=0,
-                message=message,
+                message="",
             )
             await self.send_message_to_frontend(update)
+
 
             story_document = StoryDocument(
                 title=self.story_manager.story.title,
@@ -1663,11 +1655,11 @@ class MagicTalesCoreOrchestrator:
 
             logger.info(f"Story document saved in: {final_pdf_file_path}")
 
-            message = "We really hope you enjoy this story!"
+            message = "In a few words, let the user know that we have finished and that the entire team at Magic-Tales.ai hope they enjoy this story!"
             progress_percent = 100
 
         except Exception as e:
-            message = "Failed to generate final document"
+            message = "In a few words, let the user know that we have failed to generate final document and that the entire team at Magic-Tales.ai apologizes and it's working very hard to find out what exactly happened and fix it soon."
             progress_percent = 0
             logger.error(message, exc_info=True)
             raise (f"{message}: {e}\n{traceback.format_exc()}")
@@ -1679,9 +1671,12 @@ class MagicTalesCoreOrchestrator:
                 files=[http_base_url + final_pdf_file_path],
                 data={"story_id": self.story_manager.story.id},
                 progress_percent=progress_percent,
-                message=message,
+                message="",
             )
             await self.send_message_to_frontend(update)
+
+            asyncio.create_task(self._generate_and_send_update_message_for_user(message))
+
 
             files_paths = await self._fetch_user_data_and_update_knowledge_base()
             await self.chat_assistant.update_assistant(files_paths=files_paths)

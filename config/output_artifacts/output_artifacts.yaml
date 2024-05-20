@@ -7,3 +7,4 @@ visualize_chapter_generator_response: True
 visualize_chapter_critic_response: True
 visualize_image_prompt_generator_response: True
 knowledge_base_root_dir: ./knowledge_base
+max_num_chapters: 10
