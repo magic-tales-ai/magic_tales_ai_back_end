@@ -394,7 +394,7 @@ class DatabaseManager:
                 synopsis=synopsis,
                 story_folder=story_folder,
                 images_subfolder=images_subfolder,
-                last_successful_step=StoryState.USER_FACING_CHAT.value,
+                last_successful_step=StoryState.STORY_GENERATION.value,
                 last_updated=datetime.datetime.now(datetime.UTC),
             )
             self.session.add(new_story)
