@@ -117,6 +117,7 @@ class MagicTalesCoreOrchestrator:
         self.subfolders = {"images": "images", "chapters": "chapters"}
 
         self.chapter_generation_mechanism = None
+        self.image_prompt_generation_mechanism = None
 
         self.message_sender = message_sender
         self.session = session
@@ -567,7 +568,7 @@ class MagicTalesCoreOrchestrator:
         )
         await self.story_manager.refresh()
 
-    async def create_progress_update(self, **kwargs) -> WSOutput:
+    async def create_and_send_progress_update(self, **kwargs) -> None:
         """
         Creates a progress update message in JSON format.
 
@@ -575,16 +576,11 @@ class MagicTalesCoreOrchestrator:
 
         Args:
             **kwargs: Keyword arguments representing various components of the progress update message.
-
-        Returns:
-            WSOutput: The constructed progress update message.
-
-        Example usage:
-            create_progress_update(story_state="STORY_GENERATION", status=ResponseStatus.STARTED, progress_percent=50, message="Story generation in progress")
+        
         """
 
         progress_update = WSOutput(
-            command=Command.STATUS_UPDATE,
+            command=Command.PROGRESS_UPDATE,
             token=self.new_token,
         )
 
@@ -595,7 +591,8 @@ class MagicTalesCoreOrchestrator:
             else:
                 raise KeyError(f"Invalid progress update parameter: '{key}'")
 
-        return progress_update
+        await self.send_message_to_frontend(progress_update)
+        return
 
     async def _handle_user_message(self, request: WSInput) -> None:
         """
@@ -627,7 +624,7 @@ class MagicTalesCoreOrchestrator:
         await self.send_message_to_frontend(ai_response)
 
         if ai_message_for_system:
-            logger.info(
+            logger.warn(
                 f"AI Sent a COMMAND for the Orchestrator: {ai_message_for_system}"
             )
             asyncio.create_task(self.handle_assistant_requests(ai_message_for_system))
@@ -1306,15 +1303,7 @@ class MagicTalesCoreOrchestrator:
         for chapter_number in range(1, num_chapters + 1):
             message = f"In a few words update the user that we are now, generating chapter: {chapter_number} of {num_chapters}"
             logger.info(message)
-
-            update = await self.create_progress_update(
-                story_state=str(StoryState.STORY_GENERATION),
-                status=ResponseStatus.STARTED,
-                progress_percent=(chapter_number / num_chapters) * 100,
-                message="",
-            )            
-            await self.send_message_to_frontend(update)
-            asyncio.create_task(self._generate_and_send_update_message_for_user(message))
+            await self._generate_and_send_update_message_for_user(message)            
 
             chapter_title, chapter_content = await self._generate_chapter(
                 chapters_folder=chapters_folder,
@@ -1327,60 +1316,17 @@ class MagicTalesCoreOrchestrator:
             chapters.append({"title": chapter_title, "content": chapter_content})
             previous_chapter_content = chapter_content
 
+            await self.create_and_send_progress_update(
+                story_state=str(StoryState.STORY_GENERATION),
+                status=ResponseStatus.STARTED,
+                progress_percent=0.3 * (chapter_number / num_chapters) * 100,
+                
+            )            
+
         # Update in-memory story data
         self.story_manager.in_mem_story_data.chapters = chapters
         return
-
-    async def _determine_chapter_count(self, story_features: str) -> Union[int, None]:
-        """
-        Determine the number of chapters in the story based on given story features.
-
-        Args:
-            story_features (str): The features of the story.
-
-        Returns:
-            int: The determined number of chapters. Returns None if unable to determine.
-        """
-        logger.info("Determining the number of chapters in the story.")
-
-        # Request the number of chapters from the agent
-        message = f"Given the following information:\n\nStory main features: {story_features}.\n\nPlease,infer the number of chapters of the story we want to create. Respond just with a numerical value. For example: 1, 5, 10... If unknown, default to 1"
-        response, _ = await self.helper_assistant.request_ai_response(message)
-        logger.info(f"{response}")
-
-        # try to extract numerical values
-        try:
-            return int(response)
-        except ValueError:
-            pass
-
-        # First, try to extract numerical values
-        match = re.search(r"The number of chapters should be (\d+)", response)
-        if match:
-            return int(match.group(1))
-
-        # Second, try to convert spelled-out numbers to integers
-        match = re.search(r"The number of chapters should be ([a-zA-Z]+)", response)
-        if match:
-            try:
-                return w2n.word_to_num(match.group(1))
-            except ValueError:
-                pass
-
-        # Third, try to handle a range (e.g., "between 5 to 7") and take the lower limit
-        match = re.search(r"between (\d+) to (\d+)", response)
-        if match:
-            return int(match.group(1))
-
-        # Third, try to handle a range (e.g., "between 5 to 7") and take the lower limit
-        match = re.search(r"between (\d+) and (\d+)", response)
-        if match:
-            return int(match.group(1))
-
-        # If no suitable format found, default to None (or 1, depending on your preference)
-        logger.warning("Unable to determine the number of chapters. Defaulting to 1.")
-        return 1
-
+    
     async def _generate_chapter(
         self,
         chapters_folder: str,
@@ -1430,25 +1376,62 @@ class MagicTalesCoreOrchestrator:
         except Exception as e:
             logger("There's been and error generating the Chapter")
 
+    async def _generate_image_prompts_for_all_chapters(
+        self, chapters: List[Dict[str, str]]
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Generate image prompts for all chapters in the story.
+        """
+        logger.info("Generating image prompts for all chapters.")
+        all_image_prompts = {}
+        num_chapters = len(chapters)
+        for i, chapter_dict in enumerate(chapters):
+            try:
+                chapter_number = i + 1
+                chapter_title = chapter_dict.get("title", f"Chapter {chapter_number}")
+                chapter_content = chapter_dict.get("content", "")
+                logger.info(
+                    f"Generating image prompts for Chapter {chapter_number}: {chapter_title}"
+                )
+
+                image_prompt_data = self.image_prompt_generation_mechanism._generate_image_prompts_per_chapter(
+                    chapter_number, chapter_content
+                )
+                if image_prompt_data.get("image_prompt_generator_success"):
+                    all_image_prompts[i] = {
+                        "title": chapter_title,
+                        "image_prompt_data": image_prompt_data,
+                    }
+                else:
+                    logger.warning(
+                        f"Failed to generate image prompts for {chapter_title}. Skipping."
+                    )
+                await self.create_and_send_progress_update(
+                    story_state=str(StoryState.IMAGE_PROMPT_GENERATION),
+                    status=ResponseStatus.STARTED,
+                    progress_percent=0.3 * (chapter_number / num_chapters) * 100,
+                    
+                )   
+            except Exception as e:
+                logger.error(
+                    f"Exception while generating image prompts for {chapter_title}: {e}",
+                    exc_info=True,
+                )
+
+        return all_image_prompts
+    
     async def _generate_image_prompts(self) -> None:
         """Generate image prompts for all chapters in the story."""
 
         message = f"In a few words, tell the user we have entered a new phase in the story generation process. We are now Generating vivid and amazing image descriptions for all chapters."
         logger.info(message)
-        update = await self.create_progress_update(
-            story_state=str(StoryState.IMAGE_PROMPT_GENERATION),
-            status=ResponseStatus.STARTED,
-            progress_percent=0,
-            message="",
-        )
-        await self.send_message_to_frontend(update)
-        asyncio.create_task(self._generate_and_send_update_message_for_user(message))
-
-        image_prompt_generation_mechanism = ImagePromptGenerationMechanism(
+        await self._generate_and_send_update_message_for_user(message)             
+        
+        self.image_prompt_generation_mechanism = ImagePromptGenerationMechanism(
             config=self.config
         )
         all_chapter_prompts_and_new_chapters_annotated = (
-            image_prompt_generation_mechanism.generate_image_prompts_for_all_chapters(
+            await self._generate_image_prompts_for_all_chapters(
                 chapters=self.story_manager.in_mem_story_data.chapters
             )
         )
@@ -1460,13 +1443,13 @@ class MagicTalesCoreOrchestrator:
         )  # {self.story_manager.in_mem_story_data.image_prompts}")
 
     async def _extract_post_processed_chapters(
-        self, all_chapter_prompts: Dict[int, Dict[str, Any]]
+        self, all_image_prompts: Dict[int, Dict[str, Any]]
     ) -> None:
         """
         Save the post-processed chapters, which include image annotations, into the InMemStoryData structure.
 
         Args:
-            all_chapter_prompts: A dictionary containing image prompt data for each chapter.
+            all_image_prompts: A dictionary containing image prompt data for each chapter.
 
         Returns:
             None
@@ -1475,7 +1458,7 @@ class MagicTalesCoreOrchestrator:
         image_prompt_messages = []
         image_prompts = []
 
-        for chapter_number, chapter_data in all_chapter_prompts.items():
+        for chapter_number, chapter_data in all_image_prompts.items():
             chapter_title = chapter_data.get("title", f"Chapter {chapter_number + 1}")
             chapter_content = chapter_data["image_prompt_data"][
                 "image_prompt_response_content_dict"
@@ -1520,12 +1503,13 @@ class MagicTalesCoreOrchestrator:
         """
 
         logger.info("Initiating image generation process.")
-        message = f"Update the user in just a few words that we have entered a new phase in the story generation process. We are now going to start creating all the illustrations."
-        asyncio.create_task(self._generate_and_send_update_message_for_user(message))
+        message = f"Update the user in just a few words that we have entered the third of four phases in the story generation process. We are now going to start creating all the illustrations."
+        await self._generate_and_send_update_message_for_user(message)
 
         # await self.story_manager.refresh()
 
-        all_chapter_prompts = self.story_manager.in_mem_story_data.image_prompts
+        all_image_prompts = self.story_manager.in_mem_story_data.image_prompts
+        total_number_images = len(all_image_prompts)
         story_directory = self.story_manager.story.story_folder
 
         # Create a subdirectory for images within the specified story directory
@@ -1542,24 +1526,19 @@ class MagicTalesCoreOrchestrator:
         # Flatten list of lists and keep track of chapter numbers
         flat_image_prompts = [
             (chapter_number, image_prompt, image_prompt_index)
-            for chapter_number, chapter_prompts in enumerate(all_chapter_prompts, 1)
+            for chapter_number, chapter_prompts in enumerate(all_image_prompts, 1)
             for image_prompt_index, image_prompt in enumerate(chapter_prompts)
         ]
 
+        image_generation_count = 0
         for chapter_number, image_prompt, image_prompt_index in flat_image_prompts:
             filename = f"Chapter_{chapter_number}_Image_{image_prompt_index}.png"
             message = f"Update the user in just a few words that we are Generating Chapter {chapter_number}, illustration {image_prompt_index+1}"
             logger.info(message)
-            update = await self.create_progress_update(
-                story_state=str(StoryState.IMAGE_GENERATION),
-                status=ResponseStatus.STARTED,
-                progress_percent=0,
-                message="",
-            )
-            await self.send_message_to_frontend(update)
-            asyncio.create_task(self._generate_and_send_update_message_for_user(message))
+            await self._generate_and_send_update_message_for_user(message)                     
 
-            try:
+            try:                
+                image_generation_count += 1
                 generated_image_path = image_generator.generate_images(
                     [image_prompt], image_directory
                 )
@@ -1572,23 +1551,17 @@ class MagicTalesCoreOrchestrator:
                 else:
                     message = f"Failed to generate image for Chapter {chapter_number}, Image {image_prompt_index}. Skipping."
                     logger.error(message)
-                    update = await self.create_progress_update(
-                        story_state=str(StoryState.IMAGE_GENERATION),
-                        status=ResponseStatus.STARTED,
-                        progress_percent=0,
-                        message=message,
-                    )
-                    await self.send_message_to_frontend(update)
+
+                await self.create_and_send_progress_update(
+                    story_state=str(StoryState.IMAGE_GENERATION),
+                    status=ResponseStatus.STARTED,
+                    progress_percent=0.3 * (image_generation_count / total_number_images) * 100,
+                    
+                )   
+                    
             except Exception as e:
                 message = f"An error occurred while processing Chapter {chapter_number}, Image {image_prompt_index}."
-                logger.error(f"{message}. Details:\n{traceback.format_exc()}")
-                update = await self.create_progress_update(
-                    story_state=str(StoryState.IMAGE_GENERATION),
-                    status=ResponseStatus.FAILED,
-                    progress_percent=0,
-                    message=message,
-                )
-                await self.send_message_to_frontend(update)
+                logger.error(f"{message}. Details:\n{traceback.format_exc()}")                
                 continue
 
         logger.info(f"Successfully generated image files: {image_filenames}")
@@ -1624,23 +1597,11 @@ class MagicTalesCoreOrchestrator:
         """
         Asynchronously creates the final story document with associated images and saves it to the specified directory.
         """
-        message = f"Update the user in a few words that we just entered the last phase of the story generation process. We are now starting the final document generation, where we put everything together: All Chapters and all images, and we create a downloadable file."
-        asyncio.create_task(self._generate_and_send_update_message_for_user(message))
+        message = f"Update the user in a few words that we just entered the last phase of the story generation process. We are now starting the final document generation, where we put everything together: All Chapters and all images, and we create a downloadable file."        
         logger.info(message)
+        await self._generate_and_send_update_message_for_user(message)        
 
-        # await self.story_manager.refresh()
-
-        try:
-
-            update = await self.create_progress_update(
-                story_state=str(StoryState.DOCUMENT_GENERATION),
-                status=ResponseStatus.STARTED,
-                progress_percent=0,
-                message="",
-            )
-            await self.send_message_to_frontend(update)
-
-
+        try:                       
             story_document = StoryDocument(
                 title=self.story_manager.story.title,
                 chapters=self.story_manager.in_mem_story_data.post_processed_chapters,
@@ -1650,35 +1611,46 @@ class MagicTalesCoreOrchestrator:
             )
 
             story_document.create_document()
+            await self.create_and_send_progress_update(
+                story_state=str(StoryState.DOCUMENT_GENERATION),
+                status=ResponseStatus.STARTED,
+                progress_percent=93.3,
+                
+            ) 
             doc_filepath = story_document.save_document("story.docx")
+            await self.create_and_send_progress_update(
+                story_state=str(StoryState.DOCUMENT_GENERATION),
+                status=ResponseStatus.STARTED,
+                progress_percent=96.6,
+                
+            )
             final_pdf_file_path = story_document.convert_docx_to_pdf(doc_filepath)
-
+            await self.create_and_send_progress_update(
+                story_state=str(StoryState.DOCUMENT_GENERATION),
+                status=ResponseStatus.STARTED,
+                progress_percent=100.0,
+                
+            )
             logger.info(f"Story document saved in: {final_pdf_file_path}")
+            message = "In a few words, let the user know that we have finished and that the entire team at Magic-Tales.ai hope they enjoy this story!"            
+            await self._generate_and_send_update_message_for_user(message)
 
-            message = "In a few words, let the user know that we have finished and that the entire team at Magic-Tales.ai hope they enjoy this story!"
-            progress_percent = 100
-
-        except Exception as e:
-            message = "In a few words, let the user know that we have failed to generate final document and that the entire team at Magic-Tales.ai apologizes and it's working very hard to find out what exactly happened and fix it soon."
-            progress_percent = 0
-            logger.error(message, exc_info=True)
-            raise (f"{message}: {e}\n{traceback.format_exc()}")
-        finally:
             http_base_url = "http://localhost:8000"
-            update = await self.create_progress_update(
+            await self.create_and_send_progress_update(
                 command=Command.PROCESS_COMPLETED,
                 story_state=str(StoryState.DOCUMENT_GENERATION),
                 files=[http_base_url + final_pdf_file_path],
                 data={"story_id": self.story_manager.story.id},
-                progress_percent=progress_percent,
-                message="",
-            )
-            await self.send_message_to_frontend(update)
-
-            asyncio.create_task(self._generate_and_send_update_message_for_user(message))
-
-
+                progress_percent=100.0,
+                
+            )            
+            
             files_paths = await self._fetch_user_data_and_update_knowledge_base()
             await self.chat_assistant.update_assistant(files_paths=files_paths)
 
+        except Exception as e:
+            message = "In a few words, let the user know that we have failed to generate final document and that the entire team at Magic-Tales.ai apologizes and it's working very hard to find out what exactly happened and fix it soon."            
+            logger.error(message, exc_info=True)
+            raise (f"{message}: {e}\n{traceback.format_exc()}")
+        finally:            
             await self.send_working_command_to_frontend(False)

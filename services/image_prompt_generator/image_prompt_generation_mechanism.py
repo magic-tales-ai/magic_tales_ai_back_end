@@ -54,43 +54,6 @@ class ImagePromptGenerationMechanism:
             prompt_constructor=prompt_constructor,
         )
 
-    def generate_image_prompts_for_all_chapters(
-        self, chapters: List[Dict[str, str]]
-    ) -> Dict[int, Dict[str, Any]]:
-        """
-        Generate image prompts for all chapters in the story.
-        """
-        logger.info("Generating image prompts for all chapters.")
-        all_chapter_prompts = {}
-
-        for i, chapter in enumerate(chapters):
-            try:
-                chapter_title = chapter.get("title", f"Chapter {i + 1}")
-                chapter_content = chapter.get("content", "")
-                logger.info(
-                    f"Generating image prompts for Chapter {i + 1}: {chapter_title}"
-                )
-
-                image_prompt_data = self._generate_image_prompts_per_chapter(
-                    i + 1, chapter_content
-                )
-                if image_prompt_data.get("image_prompt_generator_success"):
-                    all_chapter_prompts[i] = {
-                        "title": chapter_title,
-                        "image_prompt_data": image_prompt_data,
-                    }
-                else:
-                    logger.warning(
-                        f"Failed to generate image prompts for {chapter_title}. Skipping."
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Exception while generating image prompts for {chapter_title}: {e}",
-                    exc_info=True,
-                )
-
-        return all_chapter_prompts
-
     def _generate_image_prompts_per_chapter(
         self, chapter_number: int, chapter_content: str
     ) -> Dict[str, Any]:

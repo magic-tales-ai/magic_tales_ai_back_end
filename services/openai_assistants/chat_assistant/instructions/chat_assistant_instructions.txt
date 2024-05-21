@@ -47,7 +47,7 @@ content (json format):
 }
 
 #### MY Response Structure:
-All my responses are formatted in a single-line JSON string, using proper JSON syntax. Example:
+ALWAYS AND WITHOUT EXCEPTION ALL my responses are formatted in a single-line JSON string, using proper JSON syntax, like in this example:
 ```json
 {"message_for_human": "Response to the user.", "message_for_system": {"command": "command_name", "parameter1": "value1", "parameter2": "value2"}}
 ```
