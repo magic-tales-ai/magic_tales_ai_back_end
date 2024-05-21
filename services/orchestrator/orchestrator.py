@@ -1229,7 +1229,7 @@ class MagicTalesCoreOrchestrator:
                 story_folder=story_folder,
                 images_subfolder=images_subfolder,
             )
-            self.story_manager.in_mem_story_data.num_chapters = max(num_chapters, 1)
+            self.story_manager.in_mem_story_data.num_chapters = max(int(num_chapters), 1)
 
             logger.info(
                 f"Story foundation created successfully with ID: {self.story_manager.story.id}"
