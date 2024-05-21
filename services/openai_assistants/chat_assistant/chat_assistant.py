@@ -65,10 +65,8 @@ class ChatAssistant(Assistant):
 
         except (json.JSONDecodeError, KeyError) as e:
             error = traceback.format_exc()
-            logger.warning(
-                f"JSON parsing failed, attempting regex extraction: {error}"
-            )
-            #return self._extract_with_regex(ai_message_content)
+            logger.warning(f"JSON parsing failed, attempting regex extraction: {error}")
+            # return self._extract_with_regex(ai_message_content)
             return None, None, error
 
     def _extract_with_regex(
@@ -91,7 +89,9 @@ class ChatAssistant(Assistant):
             human_match = re.search(
                 r'"message_for_human"\s*:\s*"([^"]*)"', sanitized_content
             )
-            message_for_human = human_match.group(1) if human_match else ai_message_content
+            message_for_human = (
+                human_match.group(1) if human_match else ai_message_content
+            )
 
             # Extract message_for_system
             system_match = re.search(

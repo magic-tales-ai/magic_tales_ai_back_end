@@ -133,7 +133,7 @@ class StoryManager:
         features: str,
         synopsis: str,
         story_folder: str,
-        images_subfolder: str,       
+        images_subfolder: str,
     ) -> None:
         """
         Create a new story and save it to the database with robust error handling.
@@ -146,7 +146,7 @@ class StoryManager:
             synopsis (str): Synopsis of the story.
             story_folder (str): Folder where we will host all files for the story
             images_subfolder (str): Images subfolder (usually "images") where we will host all the images for the story
-                        
+
         Returns:
             Story: The newly created story instance.
 

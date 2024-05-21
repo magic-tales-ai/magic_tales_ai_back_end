@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 SQLALCHEMY_DATABASE_URL = f"mysql+aiomysql://{os.getenv('DATABASE_USER')}:{os.getenv('DATABASE_PASSWORD')}@{os.getenv('DATABASE_HOST')}:{os.getenv('DATABASE_PORT')}/{os.getenv('DATABASE_NAME')}"
 
 # Create async engine
-async_engine = create_async_engine(SQLALCHEMY_DATABASE_URL, echo=True)
+async_engine = create_async_engine(SQLALCHEMY_DATABASE_URL, echo=False)
 
 
 @asynccontextmanager
