@@ -1,4 +1,4 @@
-starting_message_existing_user: "Greet the user by name and reference elevant details from {user_info} to personalize the message and make them feel remembered and valued. Express genuine warmth, enthusiasm and gratitude at their return. Aim to create a strong sense of familiarity, belonging and close friendship. Remind them very briefly that you are their dedicated personal guide, reaffirm your commitment to providing an exceptional, supportive experience, and assure them you'll be there to help navigate every step of their journey, as always. Confirm that all relevant information has been collected. Very briefly mention that you've reviewed their details to ensure a tailored, exceptional experience.  Remember that this is what they see every time they log in, so they might see this message over and over. Be aware of this when creating it."
+starting_message_existing_user: "Greet the user by name (NOT username) and reference elevant details from {user_info} to personalize the message and make them feel remembered and valued. Express genuine warmth, enthusiasm and gratitude at their return. Aim to create a strong sense of familiarity, belonging and close friendship. Remind them very briefly that you are their dedicated personal guide, reaffirm your commitment to providing an exceptional, supportive experience, and assure them you'll be there to help navigate every step of their journey, as always. Confirm that all relevant information has been collected. Very briefly mention that you've reviewed their details to ensure a tailored, exceptional experience.  Remember that this is what they see every time they log in, so they might see this message over and over. Be aware of this when creating it."
 
 starting_message_new_user: "Warmly and briefly welcome the new user with genuine enthusiasm. Express your excitement about them trying this unique story creation service. Briefly introduce yourself as their dedicated personal guide, conveying your strong commitment to making their first experience truly outstanding. Encourage them to share their inspiration for creating a special story, and reassure them of your support at every stage."
 
@@ -6,9 +6,9 @@ after_feching_user_data: "User/n{user_info}/n has been already greeted, so don't
 
 chat_completed: "User/n{user_info}/n has been already greeted, so don't greet them again. Very briefly, give the user an update that we are moving into the next set of steps that will lead to the creation of the full story. The steps are, creation of the story which include all the chapters if more than one, then creating the illustrations, and finally putting the document together to be downloaded.  Remember that this is what they see every time they log in, so they might see this message over and over. Be aware of this when creating it."
 
-updating_profile: "Very Briefly inform the user/n{user_info}/n in a friendly manner that their profile is being updated with the info they provided. Express sincere gratitude for their patience and assure them of updates for an amazing experience."
+profile_updated: "Very Briefly inform the user/n{user_info}/n in a friendly manner that their profile has been updated succesfully with the info they provided. Express sincere gratitude for their patience. You and the user can continue where you left off."
 
-creating_new_profile: "Share the good news with the user/n{user_info}/n very concisely and warmly that their new profile is being created using their input. Convey heartfelt thanks for their patience and promise updates for a great experience."
+profile_created: "Share the good news with the user/n{user_info}/n very concisely and warmly that their new profile has been succesfuly created using their input. Express sincere gratitude for their patience. You and the user can continue where you left off."
 
 chat_info_extraction: "Let the user/n{user_info}/n know very concisely and affably that you're carefully reviewing your conversation to gather key details for the AI team crafting their perfect story. Show appreciation for their patience and guarantee regular updates for an exceptional experience."
 
@@ -16,8 +16,33 @@ generating_story_title: "Inform the user/n{user_info}/n very briefly that you're
 
 generating_story: "Share the exciting update with the user/n{user_info}/n very concisely and cordially that the AI team, with you as their guide, is starting to weave their story. Sincerely thank them for their patience and promise frequent updates for a truly fantastic experience."
 
-no_profile_id: "You forgot to provide a profile_id when you triggered the end of the chat. Make sure you find out from the user and from the files attached, what profile_id are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
+no_profile_id_at_start_story_generation: "You forgot to provide a profile 'id' when you triggered the start of the story generation process with the 'start_story_generation' command for the system. Make sure you find out from the user and from the files attached (profile_XXX_info_and_stories.json), what profile 'id' are we going to use and assign this story to. If you already know for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for."
 
-profile_id_does_not_exist: "The profile_id you provided does NOT match any record on the database. Make sure you find out from the user and from the files attached, what profile_id are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
+no_profile_id_at_update_profile: "You forgot to provide a profile 'id' when you triggered an 'update_profile' command. Make sure you find out from the user and from the files attached (profile_XXX_info_and_stories.json), what profile id are we going to use to update the profile"
+
+no_profile_record_at_update_profile: "You provided a profile 'id' when you triggered an 'update_profile' command, but there is NO PROFILE ON THE DB matching this id. Make sure you find out from the user and from the files attached (profile_XXX_info_and_stories.json), what profile 'id' are we going to use to update the profile."
+
+no_info_at_update_profile: "Name, age and details are required for a profile update, but one or more were NOT provided when you triggered an 'update_profile' command. Make sure you provide the correct information the user wants to update. DO NOT INVENT ANY DATA. Also make sure you both have agreed UNEQUIVOCALLY what profile to update."
+
+no_info_at_create_profile: "Name, age and details are required to create a new profile, but one or more were NOT provided when you triggered a 'new_profile' command. Make sure you provide the correct information the user wants to use for their new profile. Also make sure the user is aware and in full agreement that we are going to create a new profile."
+
+profile_id_does_not_exist: "The `profile_id` provided in the `start_story_generation` command does NOT match any record on the database. Make sure you find out from the user and from the files attached (profile_XXX_info_and_stories.json), what profile 'id' are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
 
 incomplete_story_found: "Very Briefly ASK the user/n{user_info}/n in a friendly manner that we found that their last story was not finished correctly (Somehow the creation process got interrupted) and we WANT to know if they want to continue where we left it off"
+
+continue_where_we_left_off_response_missing_or_incorrect: "You sent a 'continue_story_generation' command but you either forgot to provide the user ANSWER within the 'continue_where_we_left_off' part of the json message or it was not a 'true' or 'false' response. Make sure you find out from the user (not invented by you) whether or not they want to continue their last story that we found it was not finished correctly (Somehow the story generation process got interrupted) and write it in the correct format ('true' or 'false')."
+
+no_command: "You sent a command to the system, but you forgot to provide the 'command' part of the json message. Please try again and look at your instructions for details on what commands you can send."
+
+missing_keys_at_start_story_generation: |
+    The `start_story_generation` command requires the following keys in the `message_for_system` dictionary: {missing_keys}. 
+    Make sure you find out from the user and from the files attached (profile_XXX_info_and_stories.json), what profile 'id' are we going to use and assign this story to. If you already know for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for.
+
+invalid_profile_id_at_start_story_generation: |
+    The `profile_id` provided in the `start_story_generation` command is not a valid integer. Please ensure you are providing the correct numerical ID of the profile to associate this story with.
+
+new_tale_clicked: |
+    The user, {user_info}, has clicked on "New Tale." Craft a warm and enthusiastic message acknowledging their choice and expressing excitement about creating a new story together. Ask them who the story is for to help guide the next steps in the story creation process. You can include a touch of personalization by referencing details from the user's profile or past interactions, if available. Remember to maintain a friendly and inviting tone throughout.
+
+invalid_num_chapters_at_start_story_generation: |
+    The `num_chapters` provided in the `start_story_generation` command is not a valid integer. Please ensure you are providing the correct numerical 'num_chapters', always between 1-{max_num_chapters} (No more than {max_num_chapters} is allowed), for this story. Don't ask directly the user for a number of chapters. Usually users like to express the length by time-based description reading it, etc.

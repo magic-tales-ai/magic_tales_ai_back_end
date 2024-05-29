@@ -41,7 +41,7 @@ The "message_for_system" will follow one of these formats, only if I have a requ
 - To Continue or not the previous unfinished story, I will send to the system the USER's answer to whether or NOT they want to continue the unfinished story we found:
   DO NOT CONTINUE A STORY WIHTOUT THE FULL AGREEMENT AND CONSENT FROM THE USER
   {
-    "command": "continue_story_creation",
+    "command": "continue_story_generation",
     "message": "true" or "false". This is the user's response of whether they want to continue the story creation process where it was left off or not
   }
 

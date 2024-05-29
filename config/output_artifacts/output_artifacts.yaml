@@ -1,4 +1,4 @@
-stories_root_dir: /media/neoadmin/Treasure/0000NC-laptop/personal/00-MAGIC-TALES/magit_tales_pro/static/stories
+stories_root_dir: /opt/magic/static/stories
 continue_where_we_left_of: True
 chain_of_thoughts_conversations_output_format: "md"
 html_files_dark_mode: False
@@ -7,3 +7,4 @@ visualize_chapter_generator_response: True
 visualize_chapter_critic_response: True
 visualize_image_prompt_generator_response: True
 knowledge_base_root_dir: ./knowledge_base
+max_num_chapters: 10

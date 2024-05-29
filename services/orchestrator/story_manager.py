@@ -55,7 +55,7 @@ class StoryManager:
             return StoryState(self.story.last_successful_step)
         except ValueError:
             # If last_successful_step is not valid, default to USER_FACING_CHAT
-            return StoryState.USER_FACING_CHAT
+            return StoryState.STORY_GENERATION
 
     async def reset(self):
         """Reset the manager to clear any loaded data and prepare for a new story or cleanup."""

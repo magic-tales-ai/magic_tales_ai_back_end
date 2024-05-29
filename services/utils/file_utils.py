@@ -50,9 +50,17 @@ async def convert_user_info_to_json_files(
 
         # User info
         if data.get("user_info") and files_created < max_num_files:
-            user_info_path = os.path.join(save_path, f"user_info_{data['user_info'].id}.json")
+            user_info_path = os.path.join(
+                save_path, f"user_info_{data['user_info'].id}.json"
+            )
             with open(user_info_path, "w", encoding="utf-8") as file:
-                json.dump(data["user_info"].to_dict(), file, ensure_ascii=False, indent=4, default=datetime_converter)
+                json.dump(
+                    data["user_info"].to_dict(),
+                    file,
+                    ensure_ascii=False,
+                    indent=4,
+                    default=datetime_converter,
+                )
             files_paths.append(user_info_path)
             files_created += 1
 
@@ -63,15 +71,25 @@ async def convert_user_info_to_json_files(
 
             profile_data = profile.to_dict()
             stories_for_profile = [
-                story.to_dict() for story in data.get("stories", []) if story.profile_id == profile.id
+                story.to_dict()
+                for story in data.get("stories", [])
+                if story.profile_id == profile.id
             ]
 
             if stories_for_profile:
                 profile_data["stories"] = stories_for_profile
 
-            profile_path = os.path.join(save_path, f"profile_{profile.id}_info_and_stories.json")
+            profile_path = os.path.join(
+                save_path, f"profile_{profile.id}_info_and_stories.json"
+            )
             with open(profile_path, "w", encoding="utf-8") as file:
-                json.dump(profile_data, file, ensure_ascii=False, indent=4, default=datetime_converter)
+                json.dump(
+                    profile_data,
+                    file,
+                    ensure_ascii=False,
+                    indent=4,
+                    default=datetime_converter,
+                )
             files_paths.append(profile_path)
             files_created += 1
 
@@ -80,6 +98,7 @@ async def convert_user_info_to_json_files(
         raise
 
     return files_paths
+
 
 async def convert_user_info_to_md_files(data: Dict, save_path: str) -> List[str]:
     """

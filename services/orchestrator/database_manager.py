@@ -175,15 +175,12 @@ class DatabaseManager:
                 f"Failed to retrieve messages by session ID: {ws_session_uid}. Error: {e}"
             )
 
-    async def create_profile_from_chat_details(
-        self, user_id: int, profile_details: str
-    ) -> Profile:
+    async def create_profile_from_chat_details(self, data: dict) -> Profile:
         """
         Asynchronously creates a profile from chat details provided.
 
         Args:
-            user_id (int): User ID to which the profile will be linked.
-            profile_details (str): Details extracted from the chat to be used as profile description.
+            data (dict): Details extracted from the chat to be used as profile description.
 
         Returns:
             Profile: The newly created profile object.
@@ -192,7 +189,7 @@ class DatabaseManager:
             Exception: If profile creation fails.
         """
         try:
-            new_profile = Profile(user_id=user_id, details=profile_details)
+            new_profile = Profile(**data)  # Set attributes directly
             self.session.add(new_profile)
             await self.session.commit()
             await self.session.refresh(new_profile)
@@ -397,7 +394,7 @@ class DatabaseManager:
                 synopsis=synopsis,
                 story_folder=story_folder,
                 images_subfolder=images_subfolder,
-                last_successful_step=StoryState.USER_FACING_CHAT.value,
+                last_successful_step=StoryState.STORY_GENERATION.value,
                 last_updated=datetime.datetime.now(datetime.UTC),
             )
             self.session.add(new_story)
