@@ -66,6 +66,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 except WebSocketDisconnect:
                     print("WebSocket disconnected by the server")
+                    orchestrator._cancel_token_refresh_task()
+                    orchestrator = None
+                    message_sender = None
                     break
 
         except Exception as ex:

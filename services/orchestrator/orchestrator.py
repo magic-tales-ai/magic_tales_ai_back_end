@@ -156,6 +156,10 @@ class MagicTalesCoreOrchestrator:
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set.")
+        
+    def _cancel_token_refresh_task(self):
+        if self.token_refresh_task:
+            self.token_refresh_task.cancel()
 
     async def process_frontend_request(
         self, frontend_request: WSInput, token_data: dict
@@ -171,7 +175,7 @@ class MagicTalesCoreOrchestrator:
             None
         """
         self.token_data = token_data
-        if not self.token_refresh_task:
+        if not self.token_refresh_task or self.token_refresh_task.done():
             self.new_token = await refresh_access_token(frontend_request.token)
             self.token_refresh_task = asyncio.create_task(
                 self.refresh_token_periodically()
