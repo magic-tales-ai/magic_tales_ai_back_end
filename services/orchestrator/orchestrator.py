@@ -873,6 +873,13 @@ class MagicTalesCoreOrchestrator:
                     self.config.updates_request_prompts.profile_updated
                 )
                 await self.story_manager.refresh()
+                # Construct a response to be sent by the AI Core Interface Layer to the Front End
+                ai_response = WSOutput(
+                    command=Command.PROFILE_UPDATED,
+                    token=self.new_token,
+                    working=False,  # Indicates that the response is ready
+                 )
+                await self.send_message_to_frontend(ai_response)
             return
 
         if command == Command.NEW_PROFILE:
