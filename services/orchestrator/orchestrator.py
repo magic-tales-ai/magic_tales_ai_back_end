@@ -1226,7 +1226,8 @@ class MagicTalesCoreOrchestrator:
         try:
             await self.story_manager.create_story(
                 profile_id=profile_id,
-                ws_session_uid=self.session.identity_key,  # Session identity key needs to be accurately sourced
+                # ws_session_uid=self.session.identity_key,  # Session identity key needs to be accurately sourced
+                ws_session_uid=self.websocket.uid,           # Websocket session UID associated with the story. (self.session.identity_key returns a reference to the method, not a valid attribute)
                 title=title,
                 features=features,
                 synopsis=synopsis,
