@@ -1,4 +1,4 @@
-stories_root_dir: /media/neoadmin/Treasure/0000NC-laptop/personal/00-MAGIC-TALES/magit_tales_pro/static/stories
+stories_root_dir: /opt/magic/static/stories
 continue_where_we_left_of: True
 chain_of_thoughts_conversations_output_format: "md"
 html_files_dark_mode: False
