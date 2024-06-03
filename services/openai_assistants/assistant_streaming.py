@@ -148,11 +148,11 @@ class Assistant(ABC):
             messages_data = await self._retrieve_messages()
 
             # Extract the latest AI response message
-            ai_message_for_human, ai_message_for_system = (
+            ai_message_for_user, ai_message_for_system = (
                 await self._process_ai_response(messages_data, parsing_method)
             )
 
-            return ai_message_for_human, ai_message_for_system
+            return ai_message_for_user, ai_message_for_system
 
         except Exception as e:
             logger.error(
@@ -254,7 +254,7 @@ class Assistant(ABC):
         self, ai_message_content: str
     ) -> Tuple[Optional[str], Optional[WSInput]]:
         """
-        Robustly parses AI response content, extracting `message_for_human` and creating a WSInput instance for `message_for_system`.
+        Robustly parses AI response content, extracting `message_for_user` and creating a WSInput instance for `message_for_system`.
         """
         pass
 

@@ -26,11 +26,11 @@ no_info_at_update_profile: "Name, age and details are required for a profile upd
 
 no_info_at_create_profile: "Name, age and details are required to create a new profile, but one or more were NOT provided when you triggered a 'new_profile' command. Make sure you provide the correct information the user wants to use for their new profile. Also make sure the user is aware and in full agreement that we are going to create a new profile."
 
-profile_id_does_not_exist: "The `profile_id` provided in the `start_story_generation` command does NOT match any record on the database. Make sure you find out from the user and from the files attached (profile_XXX_info_and_stories.json), what profile 'id' are we going to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know in a very nice way that you forgot to find out who the story is for"
+profile_selected_does_not_exist: "The combination of `profile_id`, `name`, `age` and `user_id` provided in the `start_story_generation` command does NOT match any record on the profile database. Make sure you find out from the user and from the files attached (profile_XXX_info_and_stories.json), what profile 'id', 'name', 'age' and 'user_id' is univocally associated with the profile the user wants to create and assign this story to. If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know extremely briefly and nicely what the problem is and what are you going to do to solve it."
 
 incomplete_story_found: "Very Briefly ASK the user/n{user_info}/n in a friendly manner that we found that their last story was not finished correctly (Somehow the creation process got interrupted) and we WANT to know if they want to continue where we left it off"
 
-continue_where_we_left_off_response_missing_or_incorrect: "You sent a 'continue_story_generation' command but you either forgot to provide the user ANSWER within the 'continue_where_we_left_off' part of the json message or it was not a 'true' or 'false' response. Make sure you find out from the user (not invented by you) whether or not they want to continue their last story that we found it was not finished correctly (Somehow the story generation process got interrupted) and write it in the correct format ('true' or 'false')."
+continue_where_we_left_off_response_missing_or_incorrect: "You sent a 'continue_unfinished_story_generation' command but you either forgot to provide the user ANSWER within the 'continue_where_we_left_off' part of the json message or it was not a 'true' or 'false' response. Make sure you find out from the user (not invented by you) whether or not they want to continue their last story that we found it was not finished correctly (Somehow the story generation process got interrupted) and write it in the correct format ('true' or 'false')."
 
 no_command: "You sent a command to the system, but you forgot to provide the 'command' part of the json message. Please try again and look at your instructions for details on what commands you can send."
 
@@ -46,3 +46,13 @@ new_tale_clicked: |
 
 invalid_num_chapters_at_start_story_generation: |
     The `num_chapters` provided in the `start_story_generation` command is not a valid integer. Please ensure you are providing the correct numerical 'num_chapters', always between 1-{max_num_chapters} (No more than {max_num_chapters} is allowed), for this story. Don't ask directly the user for a number of chapters. Usually users like to express the length by time-based description reading it, etc.
+
+spin_off_clicked: |
+    The user, {user_info}, wants to create a spin-off or sequel for the following story:\n\n{story}.\n\n
+    Craft a warm and enthusiastic message acknowledging their choice and expressing excitement.
+    Please present this information to the user in a clear and friendly manner and ask them to confirm if this is the story they want to work with and if they want to create this sequel or spin-off for the same profile.
+
+# spin_off_error_story_selected_does_not_exist: |
+#     The user, {user_info}, wants to create a spin-off or sequel for the following story:\n\n{story}.\n\n
+#     Craft a warm and enthusiastic message acknowledging their choice and expressing excitement.
+#     Please present this information to the user in a clear and friendly manner and ask them to confirm if this is the story they want to work with and if they want to create this sequel or spin-off for the same profile.

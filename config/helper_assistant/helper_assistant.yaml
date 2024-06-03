@@ -4,3 +4,4 @@ temperature: 0.0
 instructions_path: "services/openai_assistants/helper_assistant/instructions/helper_assistant_instructions.txt"
 tools:
   - type: "file_search"
+  - type: "code_interpreter"

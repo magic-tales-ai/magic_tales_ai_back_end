@@ -3,14 +3,24 @@ import traceback
 import os
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Callable
+import json
+from typing import Any, Dict, List, Optional, Type, TypeVar, Generic, Callable
+
 from openai import AsyncOpenAI
 from openai.types.beta.assistant_create_params import (
     ToolResources,
     ToolResourcesFileSearch,
+    ToolResourcesCodeInterpreter,
 )
 
 from services.utils.log_utils import get_logger
+from services.openai_assistants.assistant_response.assistant_response import (
+    AssistantResponse,
+)
+from services.openai_assistants.assistant_input.assistant_input import (
+    AssistantInput,
+    Source,
+)
 from services.openai_assistants.prompt_utils import (
     async_load_prompt_template_from_file,
 )
@@ -20,9 +30,12 @@ from magic_tales_models.models.ws_input import WSInput
 logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
+TInput = TypeVar("TInput", bound=AssistantInput)
+TResponse = TypeVar("TResponse", bound=AssistantResponse)
 
-class Assistant(ABC):
-    def __init__(self, config):
+
+class Assistant(ABC, Generic[TInput, TResponse]):
+    def __init__(self, config: Dict):
         """
         Initialize the OpenAI Assistant.
 
@@ -37,6 +50,7 @@ class Assistant(ABC):
         self.vector_store_id = None
         self.file_ids = []
         self.retry_count = 0
+
         logger.info(f"{self.config.name} AI assistant class initialized.")
 
     def _validate_openai_api_key(self):
@@ -64,31 +78,67 @@ class Assistant(ABC):
 
     async def _create_tool_resources(self) -> Optional[ToolResources]:
         """
-        Creates ToolResources with a vector store for file search tools.
+        Creates ToolResources with a vector store for file search and code interpreter tools.
 
         Returns:
             Optional[ToolResources]: The created tool resources, or None if not applicable.
         """
+        tool_resources: ToolResources = {}
+
         try:
-            if self.config.tools and any(
-                tool.get("type") == "file_search" for tool in self.config.tools
-            ):
-                if not self.file_ids:
-                    logger.warning(
-                        f"File IDs are empty for {self.config.name} assitant, skipping vector store creation."
+            vector_store_ids = await self._create_and_populate_vector_store()
+
+            if vector_store_ids:
+                if self._is_tool_configured("file_search"):
+                    tool_resources["file_search"] = ToolResourcesFileSearch(
+                        vector_store_ids=vector_store_ids
                     )
-                    return None
-                self.vector_store_id = await self._create_vector_store()
-                await self._attach_files_to_vector_store(self.vector_store_id)
-                return ToolResources(
-                    file_search=ToolResourcesFileSearch(
-                        vector_store_ids=[self.vector_store_id]
+
+                if self._is_tool_configured("code_interpreter"):
+                    tool_resources["code_interpreter"] = ToolResourcesCodeInterpreter(
+                        file_ids=self.file_ids
                     )
-                )
+
         except Exception as e:
-            logger.error(f"Error creating tool resources: {e}")
+            logger.exception(f"Error creating tool resources: {e}")
             return None
-        return None
+
+        return tool_resources if tool_resources else None
+
+    async def _create_and_populate_vector_store(self) -> List[str]:
+        """
+        Creates a vector store and attaches the specified files to it.
+
+        Returns:
+            List[str]: The list of vector store IDs, or an empty list if no files are provided.
+        """
+        if not self.file_ids:
+            logger.warning(
+                f"File IDs are empty for {self.config.name} assistant, skipping vector store creation."
+            )
+            return []
+
+        try:
+            vector_store_id = await self._create_vector_store()
+            await self._attach_files_to_vector_store(vector_store_id)
+            return [vector_store_id]
+        except Exception as e:
+            logger.exception(f"Error creating and populating vector store: {e}")
+            return []
+
+    def _is_tool_configured(self, tool_type: str) -> bool:
+        """
+        Checks if a specific tool type is configured in the assistant's configuration.
+
+        Args:
+            tool_type (str): The type of the tool to check.
+
+        Returns:
+            bool: True if the tool is configured, False otherwise.
+        """
+        return self.config.tools and any(
+            tool.get("type") == tool_type for tool in self.config.tools
+        )
 
     async def _attach_files_to_vector_store(self, vector_store_id: str) -> None:
         """
@@ -208,8 +258,10 @@ class Assistant(ABC):
             raise
 
     async def request_ai_response(
-        self, message: str, parsing_method: Optional[Callable] = None
-    ) -> Tuple[str, str]:
+        self,
+        message_for_assistant: TInput,
+        parsing_method: Optional[Callable] = None,
+    ) -> TResponse:
         """
         Process the incoming message and generate an AI response.
 
@@ -218,21 +270,20 @@ class Assistant(ABC):
         for completion, and processing the received response.
 
         Args:
-            message (str): The message received from the client.
+            message_for_assistant (TInput): The input for the assistant containing the message and its source.
             parsing_method (Callable, optional): A method to parse the AI response.
 
         Returns:
-            Tuple[str, str]: A tuple containing the response message for the human and
-                              for the system.
+            TResponse
 
         Raises:
             Exception: If the OpenAI API call fails or the parsing method encounters an error.
         """
-        messages_data = []
-
         try:
             # Send the message to the OpenAI assistant
-            await self._send_message_to_assistant(message)
+            await self._send_message_to_assistant(
+                json.dumps(await message_for_assistant.to_json())
+            )
 
             # Initiate the assistant run and wait for completion
             await self._wait_for_assistant_run_completion()
@@ -240,41 +291,44 @@ class Assistant(ABC):
             # Retrieve the latest messages from the assistant
             messages_data = await self._retrieve_messages()
 
-            ai_message_for_human, ai_message_for_system, error = (
-                await self._process_ai_response(messages_data, parsing_method)
-            )
+            response = await self._process_ai_response(messages_data, parsing_method)
 
-            if error:
+            if await response.has_error():
                 if self.retry_count < self.config.max_retries:
                     self.retry_count += 1
                     logger.warn(
-                        f"Retrying due to error: {error}. Attempt {self.retry_count}"
+                        f"Retrying due to error: {response.error}. Attempt {self.retry_count}"
                     )
-                    retry_message = f"Error encountered while procesing your response:\n{error}.\nPlease clarify or modify the respose. Pay attention to the JSON format required. Don't forget to extrictly use the same language used with the user. This is not the user. I'm the system and I'll always respond in EN"
+                    retry_message = message_for_assistant.__class__(
+                        message=f"The JSON you provided is not properly formatted:\n{response.error}.\nPlease clarify or modify the respose.",
+                        source=Source.SYSTEM,
+                    )
+
                     return await self.request_ai_response(retry_message, parsing_method)
                 else:
                     logger.error(
                         "Maximum retries reached, unable to resolve the issue."
                     )
-                    return (
-                        "Unfortunately, I couldn't process your request due to repeated errors.",
-                        "",
+                    self.retry_count = 0
+                    return self._default_error_processing_request(
+                        message="Unfortunately, I couldn't process your request. Let's try again in a second.",
+                        error="Generic error or maximum retries parsing reached, issue unresolved.",
                     )
 
             # Reset retry count on successful processing
             self.retry_count = 0
 
-            logger.info(f"AI message for user: {ai_message_for_human}.")
-            logger.info(f"AI message for system: {ai_message_for_system}.")
+            logger.info(f"AI response: {response.serialize}.")
 
-            return ai_message_for_human, ai_message_for_system
+            return response
 
         except Exception as e:
-            logger.error(
-                f"An error occurred during AI response generation: {e}/n/n{traceback.format_exc()}",
-                exc_info=True,
+            error = str(e)  # traceback.format_exc(e)
+            logger.error(f"An error occurred during AI response generation: {error}")
+            return self._default_error_processing_request(
+                message="I apologize. An error has occurred, please try again. :-(",
+                error=error,
             )
-            return "", ""
 
     async def _send_message_to_assistant(self, message: str) -> None:
         """
@@ -337,7 +391,7 @@ class Assistant(ABC):
 
     async def _process_ai_response(
         self, messages_data: List, parsing_method: Optional[Callable] = None
-    ) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
+    ) -> TResponse:
         """
         Processes the OpenAI assistant's latest response.
 
@@ -346,7 +400,7 @@ class Assistant(ABC):
             parsing_method (Callable, optional): A method to parse the AI response.
 
         Returns:
-            Tuple[str, dict, str]: A tuple of the AI's response for the human, the system command and any error that might have occured.
+            TResponse
 
         Raises:
             Exception: If processing the response fails.
@@ -367,11 +421,18 @@ class Assistant(ABC):
             return self._default_parsing(ai_message_content)
 
     @abstractmethod
-    def _default_parsing(
-        self, ai_message_content: str
-    ) -> Tuple[Optional[str], Optional[dict], Optional[str]]:
+    def _default_parsing(self, ai_message_content: str) -> TResponse:
         """
-        Robustly parses AI response content, extracting `message_for_human` and creating a dict instance for `message_for_system`.
+        Define how each assistant type should parse the AI's response.
+        This method needs to be implemented by each subclass.
+        """
+        pass
+
+    @abstractmethod
+    def _default_error_processing_request(self, message: str, error: str) -> TResponse:
+        """
+        Define how each assistant type should parse the AI's response.
+        This method needs to be implemented by each subclass.
         """
         pass
 

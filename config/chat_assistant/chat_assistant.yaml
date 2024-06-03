@@ -6,3 +6,4 @@ files_path: "services/openai_assistants/chat_assistant/chat_assistant_files"
 max_retries: 3
 tools:
   - type: "file_search"
+  - type: "code_interpreter"

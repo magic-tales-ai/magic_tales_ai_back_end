@@ -3,6 +3,7 @@ from typing import List, Optional, Dict
 import datetime
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
+from sqlalchemy import inspect
 from sqlalchemy.sql import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import desc
@@ -53,6 +54,37 @@ class DatabaseManager:
         except SQLAlchemyError as e:
             raise Exception(
                 f"Failed to retrieve profile by ID: {profile_id}. Error: {e}"
+            )
+
+    async def fetch_profile_by_fields(self, **kwargs) -> Optional[Profile]:
+        """
+        Asynchronously retrieves a Profile by the specified fields.
+
+        Args:
+            **kwargs: Arbitrary keyword arguments representing the fields to filter by.
+                    Supported fields: profile_id, name, age, user_id.
+
+        Returns:
+            Optional[Profile]: The Profile object if found, else None.
+
+        Raises:
+            Exception: If there is a database error during the operation.
+        """
+        try:
+            query = select(Profile)
+            profile_columns = inspect(Profile).columns.keys()
+
+            for field, value in kwargs.items():
+                if field in profile_columns:
+                    query = query.filter(getattr(Profile, field) == value)
+                else:
+                    raise ValueError(f"Unsupported field: {field}")
+
+            result = await self.session.execute(query)
+            return result.scalars().first()
+        except SQLAlchemyError as e:
+            raise Exception(
+                f"Failed to retrieve profile by fields: {kwargs}. Error: {e}"
             )
 
     async def fetch_story_by_id(self, story_id: int) -> Optional[Story]:

@@ -16,20 +16,20 @@ def parse_response(response_content: str):
     except json.JSONDecodeError:
         # Fallback to regex if JSON parsing fails
         try:
-            message_for_human = re.search(
-                r'"message_for_human":\s*"([^"]*)"', response_content
+            message_for_user = re.search(
+                r'"message_for_user":\s*"([^"]*)"', response_content
             ).group(1)
             message_for_system = re.search(
                 r'"message_for_system":\s*"([^"]*)"', response_content
             ).group(1)
             return {
-                "message_for_human": message_for_human,
+                "message_for_user": message_for_user,
                 "message_for_system": message_for_system,
             }, False
         except Exception as e:
             logger.error(f"Failed to extract using fallback method: {e}")
             return {
-                "message_for_human": "",
+                "message_for_user": "",
                 "message_for_system": "",
             }, False  # Return empty values as a last resort
 
@@ -37,7 +37,7 @@ def parse_response(response_content: str):
 # Example usage
 ai_message_content = """
 {
-  "message_for_human": "Great! Here is the draft synopsis for our story:
+  "message_for_user": "Great! Here is the draft synopsis for our story:
 
 'Aleksandr Jojo and the Quest for the Midnight Sun'
 
@@ -64,5 +64,5 @@ parsed_response, was_json = parse_response(ai_message_content)
 if not was_json:
     logger.warning("Had to use fallback method for parsing.")
 
-print(f"Message for human: {parsed_response['message_for_human']}")
+print(f"Message for human: {parsed_response['message_for_user']}")
 print(f"Message for system: {parsed_response['message_for_system']}")
