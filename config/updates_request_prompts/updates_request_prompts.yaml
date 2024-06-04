@@ -42,15 +42,23 @@ invalid_profile_id_at_start_story_generation: |
     The `profile_id` provided in the `start_story_generation` command is not a valid integer. Please ensure you are providing the correct numerical ID of the profile to associate this story with.
 
 new_tale_clicked: |
-    The user, {user_info}, has clicked on "New Tale." Craft a warm and enthusiastic message acknowledging their choice and expressing excitement about creating a new story together. Ask them who the story is for to help guide the next steps in the story creation process. You can include a touch of personalization by referencing details from the user's profile or past interactions, if available. Remember to maintain a friendly and inviting tone throughout.
+    The user, {user_info}, has clicked on "New Tale." Craft a warm and enthusiastic message acknowledging their choice and expressing excitement about creating a new story together. 
+    Search in the attached file for the names of all the user's profiles. 
+    List all their profiles found by name and ask the user who the story is for in a clear and friendly manner (bullet points are usually very helpful), to help guide the next steps in the story creation process. 
+    You can include a touch of personalization by referencing details from the user's profile or past interactions, if available. 
+    Remember to maintain a friendly and inviting tone throughout.
 
 invalid_num_chapters_at_start_story_generation: |
     The `num_chapters` provided in the `start_story_generation` command is not a valid integer. Please ensure you are providing the correct numerical 'num_chapters', always between 1-{max_num_chapters} (No more than {max_num_chapters} is allowed), for this story. Don't ask directly the user for a number of chapters. Usually users like to express the length by time-based description reading it, etc.
 
 spin_off_clicked: |
     The user, {user_info}, wants to create a spin-off or sequel for the following story:\n\n{story}.\n\n
-    Craft a warm and enthusiastic message acknowledging their choice and expressing excitement.
-    Please present this information to the user in a clear and friendly manner and ask them to confirm if this is the story they want to work with and if they want to create this sequel or spin-off for the same profile.
+    Search in the attached file for the names of all the user's profiles.
+    Tell the user that you you are aware that most likely the spin-off will be for the same profile that the original story was itended for, but that you want to make sure about this.   
+    List them all by name and ask the user who the story is for, to help guide the next steps in the story creation process. 
+    You can include a touch of personalization by referencing details from the user's profile or past interactions, if available. 
+    Remember to maintain a friendly and inviting tone throughout.
+    Please present the story selected for a spin-off information to the user in a clear and friendly manner (bullet points are usually very helpful) and ask them to confirm if this is the story they want to work with and if they want to create this sequel or spin-off for the same profile.
 
 # spin_off_error_story_selected_does_not_exist: |
 #     The user, {user_info}, wants to create a spin-off or sequel for the following story:\n\n{story}.\n\n

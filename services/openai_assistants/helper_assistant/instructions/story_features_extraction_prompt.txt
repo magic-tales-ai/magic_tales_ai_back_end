@@ -1,0 +1,197 @@
+In this task you MUST identify and extract a comprehensive list, precisely the one below, of story features that are essential for the successful generation of stories from a conversation wiht the user.
+First, here's the comprehensive list of features you will have to extract. If the conversation DOES NOT contain specifics for any of these features, you MUST deduce them from the entire conversation and use you best judgment to provide a reasonable value or answer.
+      
+      1. Genre: Identify the genre or combination of genres that best fits the story based on the conversation (e.g., science fiction, fantasy, mystery, romance, thriller, historical fiction, non-fiction, poetry, script).
+        - Fiction (e.g., science fiction, fantasy, mystery, romance, thriller, historical fiction)
+        - Non-fiction (e.g., biography, memoir, self-help, educational)
+        - Poetry
+        - Script (e.g., screenplay, play)
+
+      2. Language: Determine the target language for the story (e.g., English, Spanish, French, German, Chinese, or a mix of languages where several characters speak different languages). Also, identify any specific dialect, regional variations, tone, or formality requirements.
+        - Target language (e.g., English, Spanish, French, German, Chinese OR Mixed of languages where several characters speak different languages)
+        - Dialect or regional variations
+        - Tone and formality
+
+      3. Length: Deduce the desired length of the story based on the user's preferences, such as reading time, word count, or directly stated number of chapters. Use the provided age group reading speeds and story type length guidelines to estimate the appropriate number of chapters ('num_chapters') for the 'start_story_generation' command.
+        - The length of the story is critical and I will have to deduce the number of chapters ('num_chapters'), without neccesarly asking the user directly, but by using their prefered method to determine the length of the story; usually by providing a reading time, or even word count. But maybe I'm lucky and they can give me directly the number of chapters they'd like to have. User experiense is paramount, so extract information in a very subtle and smooth way. This number of chapters would be a requirement when I send the 'start_story_generation' command bellow.
+        - Here's a list of average reading speeds based on different age groups:
+
+            Ages 5-6:
+            50-80 words per minute (wpm)
+            Typical chapter length: 100-200 words
+
+            Ages 7-8:
+            80-130 wpm
+            Typical chapter length: 200-400 words
+
+            Ages 9-10:
+            130-180 wpm
+            Typical chapter length: 400-800 words
+
+            Ages 11-13:
+            180-220 wpm
+            Typical chapter length: 800-1,500 words
+
+            Ages 14-17:
+            200-250 wpm
+            Typical chapter length: 1,500-2,500 words
+
+            Ages 18-24:
+            250-300 wpm
+            Typical chapter length: 2,000-3,000 words
+
+
+            Ages 25-34:
+            250-300 wpm
+            Typical chapter length: 2,000-3,000 words
+
+            Ages 35-44:
+            250-300 wpm
+            Typical chapter length: 2,000-3,000 words
+
+
+            Ages 45-54:
+            250-300 wpm
+            Typical chapter length: 2,000-3,000 words
+
+            Ages 55+:
+            200-250 wpm
+            Typical chapter length: 1,500-2,500 words
+
+        - Here's a list of story lengths base on the story type:
+        - Flash fiction (under 1,000 words): 1-2 chapters
+        - Short story (1,000 to 7,500 words): 2-5 chapters
+        - Novelette (7,500 to 17,500 words): 5-10 chapters
+        - Novella (17,500 to 40,000 words): 10-20 chapters
+        - Novel (over 40,000 words): 20+ chapters
+        - USING THIS INFORMATION I WILL WORKOUT THE EXACT STORY LENGTH.
+
+      4. Target audience: Identify the intended age group, reading level, interests, and preferences of the target audience based on the conversation.
+        - Age group (e.g., children, young adults, adults)
+        - Reading level
+        - Interests and preferences
+
+      5. Narrative style: Determine the preferred narrative style (e.g., first-person, third-person omniscient or limited, epistolary, stream of consciousness, non-linear or fragmented narrative) based on the user's input or the overall tone of the conversation.
+        - First-person narration
+        - Third-person narration (omniscient or limited)
+        - Epistolary (told through letters, documents, or diary entries)
+        - Stream of consciousness
+        - Non-linear or fragmented narrative
+
+      6. Plot structure: Identify the desired plot structure (e.g., three-act structure, hero's journey, five-act structure, seven-point story structure, non-traditional or experimental structures) based on the conversation or the genre conventions.
+        - Three-act structure (setup, confrontation, resolution)
+        - Hero's journey
+        - Five-act structure
+        - Seven-point story structure
+        - Non-traditional or experimental structures
+
+      7. Conflict and stakes: Determine the primary conflicts (internal and external) and the stakes or consequences of failure for the characters based on the conversation.
+        - Internal conflict (character's inner struggles)
+        - External conflict (character vs. character, society, nature, or technology)
+        - Urgency and consequences of failure
+
+      8. Characters: Extract information about the protagonist(s), antagonist(s), supporting characters, their development, motivations, goals, flaws, relationships, and interactions based on the user's input.
+        - Protagonist(s) and antagonist(s)
+        - Supporting characters
+        - Character development and growth
+        - Motivations, goals, and flaws
+        - Relationships and interactions between characters
+        - Any features and descriptions whether physical or non-physical
+
+      9. Setting: Identify the time period, location, cultural and social context, and environmental factors based on the conversation.
+        - Time period (e.g., historical, contemporary, future)
+        - Location (e.g., real-world, fictional, alternate reality)
+        - Cultural and social context
+        - Environmental factors and descriptions
+
+      10. Themes and messages: Deduce the desired themes, moral or ethical dilemmas, social commentary, or philosophical questions based on the user's input or the overall tone of the conversation.
+          - Universal human experiences and emotions
+          - Moral or ethical dilemmas
+          - Social commentary or criticism
+          - Philosophical or existential questions
+
+      11. Pacing: Determine the preferred pacing, including scene and chapter length, balance between action, dialogue, and description, cliffhangers, and any desired flashbacks or flash-forwards based on the user's input or genre conventions.
+          - Scene and chapter length
+          - Balance between action, dialogue, and description
+          - Cliffhangers and suspenseful moments
+          - Flashbacks and flash-forwards
+
+      12. Dialogue: Identify any specific requirements for character voices, subtext, dialect, slang, or jargon based on the conversation.
+          - Authentic and distinct character voices
+          - Subtext and implied meanings
+          - Dialect, slang, or jargon
+          - Dialogue tags and actions
+
+      13. Sensory details: Determine the desired level of sensory details, vivid descriptions, immersive language, and literary devices based on the user's input or the overall tone of the conversation.
+          - Vivid descriptions of sights, sounds, smells, tastes, and textures
+          - Immersive and evocative language
+          - Metaphors, similes, and other literary devices
+
+      14. Emotional impact: Identify the desired emotional impact on readers, including catharsis, resolution, empathy, and connection with characters based on the user's input.
+          - Engaging and resonant emotional experiences for readers
+          - Catharsis and resolution
+          - Eliciting empathy and connection with characters
+
+      15. Continuity and consistency: Ensure that the extracted features allow for a logical progression of events, adherence to established rules, and the avoidance of plot holes or inconsistencies.
+          - Logical progression of events and character actions
+          - Adherence to established rules and constraints of the story world
+          - Avoiding plot holes, inconsistencies, or contradictions
+
+      16. Originality and creativity: Identify any specific requests for fresh perspectives, unique concepts, innovative twists, or subversions of genre expectations based on the user's input.
+          - Fresh perspectives, unique concepts, or innovative twists on familiar tropes
+          - Subverting genre expectations or clichés
+          - Combining elements from different genres or styles
+
+      17. Research and accuracy: Determine any requirements for factual correctness, authentic representation, sensitivity, and respect based on the conversation.
+          - Factual correctness for historical, scientific, or technical details
+          - Authentic representation of cultures, identities, and experiences
+          - Sensitivity and respect for marginalized groups and sensitive topics
+
+      18. Formatting and presentation: Identify any specific formatting requirements, such as consistent style, voice, grammar, spelling, punctuation, and engaging opening and conclusion based on the user's input.
+          - Proper grammar, spelling, and punctuation
+          - Consistent style and voice throughout the story
+          - Appropriate use of formatting elements (e.g., paragraph breaks, italics, bold)
+          - Engaging opening and satisfying conclusion
+
+      19. Illustrations and multimedia: Determine if the user desires any accompanying artwork, graphics, photographs, interactive elements, audio narration, or soundscapes based on the conversation.
+          - Accompanying artwork, graphics, or photographs
+          - Interactive elements or hyperlinks
+          - Audio narration or soundscapes
+
+      20. Collaboration and feedback: Ensure that the extracted features incorporate user preferences, prompts, or constraints, and allow for iterative refinement based on user feedback and suggestions.
+          - Incorporation of user preferences, prompts, or constraints
+          - Iterative refinement based on user feedback and suggestions
+          - Adaptation to user's writing style or tone preferences
+      
+      21. Point of View (POV): Determine the desired point of view for the story (e.g., first-person, second-person, third-person limited, third-person omniscient, alternating or multiple POVs) based on the user's input or the overall tone of the conversation.
+
+      22. Foreshadowing and suspense: Identify any specific requests for hints, clues, red herrings, withholding information, prophecies, dreams, or visions to create anticipation and suspense based on the user's input.
+
+      23. Symbolism and motifs: Determine if the user desires any recurring images, objects, ideas, allegories, extended metaphors, archetypes, or mythological references to represent deeper meanings in the story.
+
+      24. Character archetypes: Identify any specific character archetypes (e.g., hero, mentor, ally, trickster, shapeshifter, guardian, shadow) that the user wants to include or subvert in the story.
+
+      25. Narrative devices: Determine if the user wants to incorporate any specific narrative devices, such as frame narratives, unreliable narrators, breaking the fourth wall, or metafictional elements based on the conversation.
+
+      26. Intertextuality and allusions: Identify any desired references, easter eggs, homages, or parodies of other works of literature, art, or culture that the user wants to include in the story.
+
+      27. Moral ambiguity and complexity: Determine if the user wants to explore characters with conflicting motivations, situations with no clear right or wrong answers, or the gray areas of morality and ethics based on the conversation.
+    
+      28. Narrative voice and tone: Identify the desired narrative voice and tone (e.g., humorous, satirical, ironic, serious, somber, melancholic, optimistic, hopeful, uplifting, unique, or distinctive) based on the user's input or the overall tone of the conversation.
+
+      29. Worldbuilding and lore: Determine if the user wants to include detailed history, mythology, backstory, consistent rules, intriguing cultures, religions, or political systems for the story world based on the conversation.
+
+      30. Epilogue and resolution: Identify if the user desires an epilogue that provides closure, ties up loose ends, hints at future possibilities, or reflects on character growth and lessons learned based on the conversation.
+
+By considering these various story features and elements, me and my AI team at MagicTales can generate rich, engaging, and personalized stories that cater to the unique preferences and requirements of each user. However, it's important to note that not all features may be applicable or necessary for every story, and the specific combination of features will depend on the user's goals, the desired outcome, and the capabilities of the language model being used.
+
+VERY IMPORTANT:
+To respond, use strictly this language used by the user: {user_language}
+
+For sequels, looking at the attached file might help since it contains all hte information about previous stories, their features, titles, synopsis, etc.
+Please provide the extracted story features based on the following conversation:
+"""
+{chat_string}
+"""
+
+ALL your extracted story features are:

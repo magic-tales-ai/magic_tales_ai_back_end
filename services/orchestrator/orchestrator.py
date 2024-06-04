@@ -36,6 +36,9 @@ from services.openai_assistants.assistant_input.assistant_input import (
 from services.openai_assistants.chat_assistant.chat_assistant_response import (
     ChatAssistantResponse,
 )
+from services.openai_assistants.prompt_utils import (
+    async_load_prompt_template_from_file,
+)
 from services.message_sender import MessageSender
 from services.openai_assistants.helper_assistant.helper_assistant import HelperAssistant
 from services.openai_assistants.helper_assistant.helper_assistant_input import (
@@ -48,6 +51,7 @@ from services.utils.file_utils import (
     create_new_story_directory,
     get_latest_story_directory,
     convert_user_info_to_json_files,
+    convert_user_info_to_1_json_file,
     convert_user_info_to_md_files,
 )
 from services.chapter_generator.chapter_generation_mechanism import (
@@ -122,7 +126,7 @@ class MagicTalesCoreOrchestrator:
         self.config = copy.deepcopy(config)
 
         # Initialize the Helper Assistant
-        self.helper_assistant = HelperAssistant(config.helper_assistant)
+        self.helper_assistant = HelperAssistant(config=config.helper_assistant)
 
         # Initialize the Chat Assistant
         self.chat_assistant = ChatAssistant(config=self.config.chat_assistant)
@@ -297,7 +301,7 @@ class MagicTalesCoreOrchestrator:
             )
 
         try:
-            await self.helper_assistant.start_assistant(helper_id)
+            await self.helper_assistant.start_assistant(helper_id, files_paths)
         except ValueError as e:
             logger.error(f"Error initializing helper assistant: {e}")
             await self._send_error_message(
@@ -770,10 +774,16 @@ class MagicTalesCoreOrchestrator:
             "stories": stories,
         }
 
-        files_paths = await convert_user_info_to_json_files(
+        # files_paths = await convert_user_info_to_json_files(
+        #     current_knowledge_base,
+        #     self.config.output_artifacts.knowledge_base_root_dir,
+        # )
+
+        files_paths = await convert_user_info_to_1_json_file(
             current_knowledge_base,
             self.config.output_artifacts.knowledge_base_root_dir,
         )
+
         # Ensure files_paths is a list, even if it's empty
         return files_paths or []
 
@@ -1235,24 +1245,47 @@ class MagicTalesCoreOrchestrator:
         Returns:
             Dict: A dictionary containing extracted elements.
         """
+        if not self.config.helper_assistant.story_features_extraction_prompt_path:
+                raise ValueError(
+                    "config.helper_assistant.story_features_extraction_prompt_path is required for feature extraction"
+                )
+
+        # 1. EXTRACT THE STORY FEATURES
+        story_features_extraction_prompt = await async_load_prompt_template_from_file(
+            self.config.helper_assistant.story_features_extraction_prompt_path
+        )
+        story_features_extraction_prompt = (
+            story_features_extraction_prompt.replace("{chat_string}", f"{chat_string}")
+        )
+        story_features_extraction_prompt = (
+            story_features_extraction_prompt.replace("{user_language}", f"{self.user_language}")
+        )
         ai_response: HelperAssistantResponse = (
             await self.helper_assistant.request_ai_response(
                 HelperAssistantInput(
-                    message=f"Identify and extract a list of all story features from this conversation, including, but not limited to genre, target audience, language, story length (time, chapters, word count), themes, style, setting, tone, plot points, relevant literary elements etc. Here's the conversation:\n{chat_string}.\n"
-                    + "Use strictly the language used by the user:"
-                    + self.user_language,
+                    message=story_features_extraction_prompt,
                     source=Source.USER,
                 )
             )
         )
         story_features = await ai_response.get_message_for_user()
 
+
+        # 2. EXTRACT THE SYNOPSIS
+        synopsis_extraction_prompt = await async_load_prompt_template_from_file(
+            self.config.helper_assistant.synopsis_extraction_prompt_path
+        )
+        synopsis_extraction_prompt = (
+            synopsis_extraction_prompt.replace("{chat_string}", f"{chat_string}")
+        )
+        synopsis_extraction_prompt = (
+            synopsis_extraction_prompt.replace("{user_language}", f"{self.user_language}")
+        )
+
         ai_response: HelperAssistantResponse = (
             await self.helper_assistant.request_ai_response(
                 HelperAssistantInput(
-                    message=f"Extract the latest agreed upon with the user story synopsis in full detail from this conversation. Make sure you capture all the latest details about characters, plot, theme, story flow, language, etc. Do not miss anything that has been agreed upon, as all these details are crucial for the generation of the perfect story. Also review and add to the synopsiis all extra information about the characters, scenes, anything that it was agreed upon on the conversation that could bring more details about what the user wanted. Here's the conversation:\n{chat_string}.\n"
-                    + "Use strictly the language used by the user:"
-                    + self.user_language,
+                    message=synopsis_extraction_prompt,
                     source=Source.USER,
                 )
             )
@@ -1284,6 +1317,9 @@ class MagicTalesCoreOrchestrator:
             )
         )
         num_chapters = await ai_response.get_message_for_user()
+
+        ## TODO: This is temporaly to perform tests. ELIMINATE BEFORE DEPLOY
+        num_chapters = 2
 
         extracted_info = {
             "story_features": story_features,

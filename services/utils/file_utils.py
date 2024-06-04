@@ -99,6 +99,58 @@ async def convert_user_info_to_json_files(
 
     return files_paths
 
+async def convert_user_info_to_1_json_file(data: Dict, save_path: str) -> str:
+    """
+    Converts user data, profiles, and stories into a single JSON file.
+
+    Args:
+        data (Dict): The knowledge base data including user info, profiles, and stories.
+        save_path (str): The directory path to save the JSON file.
+
+    Returns:
+        str: The file path of the created JSON file.
+    """
+    try:
+        os.makedirs(save_path, exist_ok=True)
+
+        user_data = {}
+
+        # User info
+        if data.get("user_info"):
+            user_data["user_info"] = data["user_info"].to_dict()
+
+        # Profiles and stories
+        user_data["profiles"] = []
+        for profile in data.get("profiles", []):
+            profile_data = profile.to_dict()
+            stories_for_profile = [
+                story.to_dict()
+                for story in data.get("stories", [])
+                if story.profile_id == profile.id
+            ]
+
+            if stories_for_profile:
+                profile_data["stories"] = stories_for_profile
+
+            user_data["profiles"].append(profile_data)
+
+        # Save the user data to a single JSON file
+        file_name = f"user_{data['user_info'].id}_data.json"
+        file_path = os.path.join(save_path, file_name)
+        with open(file_path, "w", encoding="utf-8") as file:
+            json.dump(
+                user_data,
+                file,
+                ensure_ascii=False,
+                indent=4,
+                default=datetime_converter,
+            )        
+
+        return [file_path]
+
+    except Exception as e:
+        logging.exception(f"Error in converting data to file: {e}")
+        raise
 
 async def convert_user_info_to_md_files(data: Dict, save_path: str) -> List[str]:
     """

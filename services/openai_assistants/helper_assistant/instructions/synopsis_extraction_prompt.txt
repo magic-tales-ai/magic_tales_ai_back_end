@@ -1,0 +1,44 @@
+In this task, you MUST carefully review the provided conversation between the user and the chat assistant to identify and extract the latest agreed-upon synopsis. If the synopsis is not explicitly stated, you MUST deduce it from the conversation using your best judgment and context clues.
+
+The extracted synopsis MUST include the following essential features:
+
+1. Main characters: Extract the names, roles, and full detailed descriptions of the main characters' personalities or defining traits. If not explicitly mentioned, deduce them based on the conversation.
+
+2. Setting: Identify the time period, location, and any important aspects of the story world that are essential to understanding the plot. If not directly stated, infer them from the conversation.
+
+3. Inciting incident: Pinpoint the event or situation that sets the story in motion and disrupts the main character's status quo. If not clearly specified, deduce it based on the plot elements discussed.
+
+4. Conflict: Clearly state the main conflict or challenge that the protagonist faces, whether internal, external, or both. If not explicitly mentioned, infer it from the characters' goals and obstacles.
+
+5. Plot summary: Provide a concise summary of the main events and turning points in the story, highlighting the key actions taken by the characters to address the conflict. If the complete plot is not provided, deduce the most likely progression based on the available information.
+
+6. Character development: Briefly mention any significant character arcs or transformations that occur throughout the story. If not explicitly stated, infer them from the characters' actions and decisions.
+
+7. Climax: Describe the story's climax, the moment of highest tension or confrontation where the main conflict reaches its peak. If not directly specified, deduce it based on the plot elements and character arcs discussed.
+
+8. Resolution: Explain how the main conflict is resolved and how the characters' lives are affected by the outcome. If not clearly stated, infer the most likely resolution based on the conversation.
+
+9. Theme: Identify the central themes or messages that the story explores or conveys. If not explicitly mentioned, deduce them from the characters' experiences and the overall narrative.
+
+10. Narrative style: Determine the present tense and third-person point of view in which the story will be told. If not specified, assume this style unless otherwise indicated.
+
+11. Length: Provide a concise synopsis, typically ranging from 200 to 800 words, based on the level of detail provided in the conversation and the length of the story itself.
+
+12. Coherence: Ensure that the synopsis flows logically from one point to another, with events and character actions clearly connected and easy to follow.
+
+13. Engaging language: Use engaging and descriptive language to capture the tone and atmosphere of the story while keeping the synopsis concise.
+
+14. Spoilers: Include the story's major plot points, twists, and conclusion in the synopsis to provide a comprehensive overview for planning and development purposes.
+
+15. Clarity: Ensure that the synopsis is clear, easy to understand, and avoids ambiguity or confusion about the story's main elements and progression.
+
+VERY IMPORTANT:
+To respond, use strictly this language used by the user: {user_language}
+
+For sequels, looking at the attached file might help since it contains all the information about previous stories, their features, titles, synopsis, etc.
+Please provide the extracted synopsis based on the following conversation:
+"""
+{chat_string}
+"""
+
+The LATEST AGREED UPON WITH THE USER extracted synopsis, including all the essential features, is as follows:
