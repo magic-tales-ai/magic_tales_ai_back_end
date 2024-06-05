@@ -99,6 +99,7 @@ async def convert_user_info_to_json_files(
 
     return files_paths
 
+
 async def convert_user_info_to_1_json_file(data: Dict, save_path: str) -> str:
     """
     Converts user data, profiles, and stories into a single JSON file.
@@ -144,13 +145,14 @@ async def convert_user_info_to_1_json_file(data: Dict, save_path: str) -> str:
                 ensure_ascii=False,
                 indent=4,
                 default=datetime_converter,
-            )        
+            )
 
         return [file_path]
 
     except Exception as e:
         logging.exception(f"Error in converting data to file: {e}")
         raise
+
 
 async def convert_user_info_to_md_files(data: Dict, save_path: str) -> List[str]:
     """

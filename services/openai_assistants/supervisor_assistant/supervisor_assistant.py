@@ -7,15 +7,17 @@ import re
 
 from services.utils.log_utils import get_logger
 from services.openai_assistants.assistant import Assistant
-from .chat_assistant_response import ChatAssistantResponse
-from .chat_assistant_input import ChatAssistantInput
+from .supervisor_assistant_response import SupervisorAssistantResponse
+from .supervisor_assistant_input import SupervisorAssistantInput
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
 
-class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
+class SupervisorAssistant(
+    Assistant[SupervisorAssistantInput, SupervisorAssistantResponse]
+):
     def __init__(self, config):
         """
         Initialize the Chat Assistant.
@@ -25,7 +27,9 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
         """
         super().__init__(config)
 
-    def _parse_with_fallbacks(self, ai_message_content: str) -> ChatAssistantResponse:
+    def _parse_with_fallbacks(
+        self, ai_message_content: str
+    ) -> SupervisorAssistantResponse:
         """
         Attempts to directly parse AI message content as JSON and extract `message_for_user` and `message_for_system`.
 
@@ -33,7 +37,7 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
             ai_message_content (str): The raw AI response content.
 
         Returns:
-            A ChatAssistantResponse containing: `message_for_user` as str and `message_for_system` as a dict or None for each if not applicable or errors occur.
+            A SupervisorAssistantResponse containing: `message_for_user` as str and `message_for_system` as a dict or None for each if not applicable or errors occur.
         """
         try:
             # # Remove surrounding characters and escape single quotes
@@ -51,21 +55,19 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
             ai_message_dict = json.loads(sanitized_content)
 
             # Extract the required keys
-            message_for_user = ai_message_dict.get("message_for_user", "")
-            message_for_system = ai_message_dict.get("message_for_system", {})
-            user_language = ai_message_dict.get("user_language", "ENG").upper()
+            intervention_needed = ai_message_dict.get("intervention_needed", "")
+            intervention_message = ai_message_dict.get("intervention_message", "")
 
             # Ensure message_for_system is a dictionary
-            if not isinstance(message_for_system, dict):
+            if not isinstance(intervention_message, str):
                 logger.warning(
                     "message_for_system is not a dictionary. Resetting to empty dict."
                 )
                 message_for_system = {}
 
-            return ChatAssistantResponse(
-                message_for_user=message_for_user,
-                message_for_system=message_for_system,
-                user_language=user_language,
+            return SupervisorAssistantResponse(
+                intervention_needed=intervention_needed,
+                message_for_user=intervention_message,
                 error=None,
             )
 
@@ -73,14 +75,13 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
             error = traceback.format_exc()
             logger.warning(f"JSON parsing failed, attempting regex extraction: {error}")
             # return self._extract_with_regex(ai_message_content)
-            return ChatAssistantResponse(
+            return SupervisorAssistantResponse(
+                intervention_needed=None,
                 message_for_user=sanitized_content,
-                message_for_system=None,
-                user_language=None,
                 error=e,
             )
 
-    def _default_parsing(self, ai_message_content: str) -> ChatAssistantResponse:
+    def _default_parsing(self, ai_message_content: str) -> SupervisorAssistantResponse:
         """
         Robustly parses AI response content, extracting `message_for_user`, creating a dict instance for `message_for_system AND pass over the error if it occurs.
         """
@@ -88,10 +89,9 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
 
     def _default_error_processing_request(
         self, message: str, error: str
-    ) -> ChatAssistantResponse:
-        return ChatAssistantResponse(
+    ) -> SupervisorAssistantResponse:
+        return SupervisorAssistantResponse(
+            intervention_needed=None,
             message_for_user=message,
-            message_for_system={},
-            user_language=None,
             error=error,
         )

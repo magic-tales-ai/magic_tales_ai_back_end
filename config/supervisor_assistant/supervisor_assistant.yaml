@@ -1,0 +1,6 @@
+name: "Magic-Tales Supervisor Assistant"
+model: "gpt-4-turbo"
+temperature: 0.0
+instructions_path: "services/openai_assistants/supervisor_assistant/instructions/supervisor_assistant_instructions.txt"
+max_retries: 3
+tools:

@@ -300,7 +300,7 @@ class Assistant(ABC, Generic[TInput, TResponse]):
                         f"Retrying due to error: {response.error}. Attempt {self.retry_count}"
                     )
                     retry_message = message_for_assistant.__class__(
-                        message=f"The JSON you provided is not properly formatted:\n{response.error}.\nPlease clarify or modify the respose.",
+                        message=f"Your JSON response:\n{response.message_for_user}\n It was very likely incorrectly formated and it threw the following error:\n{response.error}.\nPlease adjust you response so that this call 'json.loads(your_json_response)' DOES NOT fail again. Test it and validate it using your tools before sending it.",
                         source=Source.SYSTEM,
                     )
 

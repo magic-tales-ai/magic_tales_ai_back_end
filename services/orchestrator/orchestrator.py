@@ -25,13 +25,13 @@ from fastapi import WebSocket
 
 nest_asyncio.apply()
 
-from services.openai_assistants.chat_assistant.chat_assistant import ChatAssistant
-from services.openai_assistants.chat_assistant.chat_assistant_input import (
-    ChatAssistantInput,
-)
 from services.openai_assistants.assistant_input.assistant_input import (
     AssistantInput,
     Source,
+)
+from services.openai_assistants.chat_assistant.chat_assistant import ChatAssistant
+from services.openai_assistants.chat_assistant.chat_assistant_input import (
+    ChatAssistantInput,
 )
 from services.openai_assistants.chat_assistant.chat_assistant_response import (
     ChatAssistantResponse,
@@ -46,6 +46,15 @@ from services.openai_assistants.helper_assistant.helper_assistant_input import (
 )
 from services.openai_assistants.helper_assistant.helper_assistant_response import (
     HelperAssistantResponse,
+)
+from services.openai_assistants.supervisor_assistant.supervisor_assistant import (
+    SupervisorAssistant,
+)
+from services.openai_assistants.supervisor_assistant.supervisor_assistant_input import (
+    SupervisorAssistantInput,
+)
+from services.openai_assistants.supervisor_assistant.supervisor_assistant_response import (
+    SupervisorAssistantResponse,
 )
 from services.utils.file_utils import (
     create_new_story_directory,
@@ -125,11 +134,16 @@ class MagicTalesCoreOrchestrator:
         # Configuration
         self.config = copy.deepcopy(config)
 
+        # Initialize the Chat Assistant
+        self.chat_assistant = ChatAssistant(config=self.config.chat_assistant)
+
         # Initialize the Helper Assistant
         self.helper_assistant = HelperAssistant(config=config.helper_assistant)
 
-        # Initialize the Chat Assistant
-        self.chat_assistant = ChatAssistant(config=self.config.chat_assistant)
+        # Initialize the Supervisor Assistant
+        self.supervisor_assistant = SupervisorAssistant(
+            config=self.config.supervisor_assistant
+        )
 
         # Subfolders for storing various assets
         self.subfolders = {"images": "images", "chapters": "chapters"}
@@ -168,6 +182,8 @@ class MagicTalesCoreOrchestrator:
         }
 
         self.user_language = None
+
+        self.chat_supervision_required = None
 
         logger.info("MagicTales initialized.")
 
@@ -244,13 +260,17 @@ class MagicTalesCoreOrchestrator:
 
         assistant_id = self.user_dict.get("assistant_id", None)
         helper_id = self.user_dict.get("helper_id", None)
+        supervisor_id = self.user_dict.get("supervisor_id", None)
+
         self.user_language = self.user_dict.get("language", "ENG")
 
         logger.info(f"User current Assistant id: {assistant_id}")
         logger.info(f"User current Helper id: {helper_id}")
 
         files_paths = await self._fetch_user_data_and_update_knowledge_base()
-        await self._initialize_assistants(assistant_id, helper_id, files_paths)
+        await self._initialize_assistants(
+            assistant_id, helper_id, supervisor_id, files_paths
+        )
 
         user_message = self._generate_starting_message(try_mode=try_mode)
         await self._generate_system_request_to_update_user(user_message)
@@ -274,6 +294,7 @@ class MagicTalesCoreOrchestrator:
         self,
         assistant_id: Optional[str],
         helper_id: Optional[str],
+        supervisor_id: Optional[str],
         files_paths: Optional[List[str]],
     ) -> None:
         """
@@ -283,6 +304,7 @@ class MagicTalesCoreOrchestrator:
             assistant_id (Optional[str]): The ID of the chat assistant.
             helper_id (Optional[str]): The ID of the helper assistant.
         """
+        # CHAT ASSISTANT
         try:
             await self.chat_assistant.start_assistant(assistant_id, files_paths)
         except ValueError as e:
@@ -300,6 +322,7 @@ class MagicTalesCoreOrchestrator:
                 self.user_id, {"assistant_id": self.chat_assistant.openai_assistant.id}
             )
 
+        # HELPER ASSISTANT
         try:
             await self.helper_assistant.start_assistant(helper_id, files_paths)
         except ValueError as e:
@@ -316,6 +339,24 @@ class MagicTalesCoreOrchestrator:
             await self.database_manager.update_user_record_by_id(
                 self.user_id, {"helper_id": self.helper_assistant.openai_assistant.id}
             )
+
+        # Supervisor ASSISTANT
+        try:
+            await self.supervisor_assistant.start_assistant(supervisor_id)
+        except ValueError as e:
+            logger.error(f"Error initializing chat assistant: {e}")
+            await self._send_error_message(
+                "We are currently experiencing technical difficulties. Please try again later."
+            )
+            return
+
+        if supervisor_id != self.supervisor_assistant.openai_assistant.id:
+            logger.warn(
+                f"User {self.user_id} had Supervisor assistant {supervisor_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
+            )
+            # await self.database_manager.update_user_record_by_id(
+            #     self.user_id, {"supervisor_id": self.supervisor_assistant.openai_assistant.id}
+            # )
 
     async def handle_command_new_tale(self, frontend_request: WSInput):
         if await self.last_story_finished_correctly(self.user_id):
@@ -484,6 +525,7 @@ class MagicTalesCoreOrchestrator:
             return None
 
     async def last_story_finished_correctly(self, user_id) -> bool:
+        self.chat_supervision_required = True
         self.latest_story = await self.fetch_latest_story_for_user(user_id)
         if self.latest_story:
             if (
@@ -617,6 +659,20 @@ class MagicTalesCoreOrchestrator:
         await self.send_message_to_frontend(progress_update)
         return
 
+    async def supervisor_chat_assistant_message(
+        self, chat_assistant_response: dict
+    ) -> SupervisorAssistantResponse:
+        message_for_supervisor = SupervisorAssistantInput(
+            message=chat_assistant_response, source=Source.SYSTEM
+        )
+
+        # Generate AI response for the System
+        ai_supervisor_response: SupervisorAssistantResponse = (
+            await self.supervisor_assistant.request_ai_response(message_for_supervisor)
+        )
+
+        return ai_supervisor_response
+
     async def _handle_communication_with_assistant(
         self, request: WSInput, source: Source = Source.USER
     ) -> None:
@@ -635,26 +691,43 @@ class MagicTalesCoreOrchestrator:
         )
 
         # Generate AI response for the user message
-        ai_response: ChatAssistantResponse = (
+        chat_assistant_response: ChatAssistantResponse = (
             await self.chat_assistant.request_ai_response(message_for_assistant)
         )
-        ai_message_for_user = await ai_response.get_message_for_user()
-        ai_message_for_system = await ai_response.get_message_for_system()
+
+        # Supervise the Chat Assistant message before doing anything
+        if self.chat_supervision_required:
+            ai_supervisor_response = await self.supervisor_chat_assistant_message(
+                await chat_assistant_response.serialize()
+            )
+
+            if await ai_supervisor_response.get_intervention_needed():
+                intervention_message = (
+                    await ai_supervisor_response.get_message_for_user()
+                )
+                await self._generate_system_request_to_update_user(intervention_message)
+                return
+
+        # If Chat Assitant Didn't need any intervention we continue here.
+        ai_message_for_user = await chat_assistant_response.get_message_for_user()
+        ai_message_for_system = await chat_assistant_response.get_message_for_system()
 
         if source == Source.USER:
-            self.user_language = await ai_response.get_user_language() or "ENG"
+            self.user_language = (
+                await chat_assistant_response.get_user_language() or "ENG"
+            )
             logger.info(f"AI detected user language: {self.user_language}")
 
         logger.info(f"AI response: {ai_message_for_user}")
 
         # Construct a response to be sent by the AI Core Interface Layer to the Front End
-        ai_response = WSOutput(
+        chat_assistant_response = WSOutput(
             command=Command.MESSAGE_FOR_HUMAN,
             message=ai_message_for_user,  # AI-generated response to be displayed to the user
             token=self.new_token,
             working=False,  # Indicates that the response is ready
         )
-        await self.send_message_to_frontend(ai_response)
+        await self.send_message_to_frontend(chat_assistant_response)
 
         if ai_message_for_system:
             logger.warn(
@@ -736,16 +809,14 @@ class MagicTalesCoreOrchestrator:
             None.
         """
         # By Default
-        request_message = (
-            request_message.replace("{user_info}", f"{self.user_dict}")
-        )
+        request_message = request_message.replace("{user_info}", f"{self.user_dict}")
 
         for key, value in replacements.items():
             request_message = request_message.replace(f"{{{key}}}", str(value))
 
         request_message = (
             request_message
-            + " Use strictly the language used by the user:"
+            + " To respond, use strictly this language used by the user:"
             + self.user_language
         )
         request_message = WSInput(
@@ -866,6 +937,7 @@ class MagicTalesCoreOrchestrator:
         try:
             # Resetting the StoryManager object to its initial state
             await self.story_manager.reset()
+            self.chat_supervision_required = True
 
         except Exception as e:
             logger.error(
@@ -927,6 +999,7 @@ class MagicTalesCoreOrchestrator:
             return
 
         if command == Command.START_STORY_GENERATION:
+            self.chat_supervision_required = False
             await self._handle_start_story_generation(ai_message_for_system)
             return
 
@@ -1199,7 +1272,7 @@ class MagicTalesCoreOrchestrator:
         chat_string = HelperAssistantInput(
             message=f"Existing details: {existing_details}\nUpdates: {updates}\n"
             f"Merge these updates into the existing details. "
-            + "Use strictly the language used by the user:"
+            + "To respond, use strictly this language used by the user:"
             + self.user_language,
             source=Source.USER,
         )
@@ -1246,19 +1319,19 @@ class MagicTalesCoreOrchestrator:
             Dict: A dictionary containing extracted elements.
         """
         if not self.config.helper_assistant.story_features_extraction_prompt_path:
-                raise ValueError(
-                    "config.helper_assistant.story_features_extraction_prompt_path is required for feature extraction"
-                )
+            raise ValueError(
+                "config.helper_assistant.story_features_extraction_prompt_path is required for feature extraction"
+            )
 
         # 1. EXTRACT THE STORY FEATURES
         story_features_extraction_prompt = await async_load_prompt_template_from_file(
             self.config.helper_assistant.story_features_extraction_prompt_path
         )
-        story_features_extraction_prompt = (
-            story_features_extraction_prompt.replace("{chat_string}", f"{chat_string}")
+        story_features_extraction_prompt = story_features_extraction_prompt.replace(
+            "{chat_string}", f"{chat_string}"
         )
-        story_features_extraction_prompt = (
-            story_features_extraction_prompt.replace("{user_language}", f"{self.user_language}")
+        story_features_extraction_prompt = story_features_extraction_prompt.replace(
+            "{user_language}", f"{self.user_language}"
         )
         ai_response: HelperAssistantResponse = (
             await self.helper_assistant.request_ai_response(
@@ -1270,16 +1343,15 @@ class MagicTalesCoreOrchestrator:
         )
         story_features = await ai_response.get_message_for_user()
 
-
         # 2. EXTRACT THE SYNOPSIS
         synopsis_extraction_prompt = await async_load_prompt_template_from_file(
             self.config.helper_assistant.synopsis_extraction_prompt_path
         )
-        synopsis_extraction_prompt = (
-            synopsis_extraction_prompt.replace("{chat_string}", f"{chat_string}")
+        synopsis_extraction_prompt = synopsis_extraction_prompt.replace(
+            "{chat_string}", f"{chat_string}"
         )
-        synopsis_extraction_prompt = (
-            synopsis_extraction_prompt.replace("{user_language}", f"{self.user_language}")
+        synopsis_extraction_prompt = synopsis_extraction_prompt.replace(
+            "{user_language}", f"{self.user_language}"
         )
 
         ai_response: HelperAssistantResponse = (
