@@ -111,6 +111,12 @@ async def convert_user_info_to_1_json_file(data: Dict, save_path: str) -> str:
     Returns:
         str: The file path of the created JSON file.
     """
+
+    # Function to remove specified keys from a dictionary
+    def remove_keys_from_dict(d, keys):
+        for key in keys:
+            d.pop(key, None)
+
     try:
         os.makedirs(save_path, exist_ok=True)
 
@@ -119,16 +125,26 @@ async def convert_user_info_to_1_json_file(data: Dict, save_path: str) -> str:
         # User info
         if data.get("user_info"):
             user_data["user_info"] = data["user_info"].to_dict()
+            # Keys to be removed
+            keys_to_remove = ["assistant_id", "helper_id", "supervisor_id", "try_mode"]
+            remove_keys_from_dict(user_data["user_info"], keys_to_remove)
+
+            user_data["user_info"]["num_profiles"] = len(data["profiles"])
 
         # Profiles and stories
         user_data["profiles"] = []
         for profile in data.get("profiles", []):
             profile_data = profile.to_dict()
             stories_for_profile = [
-                story.to_dict()
+                {
+                    key: value
+                    for key, value in story.to_dict().items()
+                    if key != "ws_session_uid"
+                }
                 for story in data.get("stories", [])
                 if story.profile_id == profile.id
             ]
+            profile_data["num_stories"] = len(stories_for_profile)
 
             if stories_for_profile:
                 profile_data["stories"] = stories_for_profile

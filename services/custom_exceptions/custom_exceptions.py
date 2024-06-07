@@ -1,0 +1,2 @@
+class NotADictionaryError(Exception):
+    pass

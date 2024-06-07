@@ -68,24 +68,24 @@ class DatabaseManager:
             Optional[Profile]: The Profile object if found, else None.
 
         Raises:
-            Exception: If there is a database error during the operation.
+            ValueError: If an unsupported field is provided.
+            SQLAlchemyError: If there is a database error during the operation.
         """
         try:
             query = select(Profile)
             profile_columns = inspect(Profile).columns.keys()
 
             for field, value in kwargs.items():
-                if field in profile_columns:
-                    query = query.filter(getattr(Profile, field) == value)
-                else:
+                if field not in profile_columns:
                     raise ValueError(f"Unsupported field: {field}")
+                query = query.filter(getattr(Profile, field) == value)
 
             result = await self.session.execute(query)
             return result.scalars().first()
         except SQLAlchemyError as e:
-            raise Exception(
+            raise SQLAlchemyError(
                 f"Failed to retrieve profile by fields: {kwargs}. Error: {e}"
-            )
+            ) from e
 
     async def fetch_story_by_id(self, story_id: int) -> Optional[Story]:
         """

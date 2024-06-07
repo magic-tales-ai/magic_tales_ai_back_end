@@ -289,9 +289,11 @@ class Assistant(ABC, Generic[TInput, TResponse]):
             await self._wait_for_assistant_run_completion()
 
             # Retrieve the latest messages from the assistant
-            messages_data = await self._retrieve_messages()
+            self.latest_messages_data = await self._retrieve_messages()
 
-            response = await self._process_ai_response(messages_data, parsing_method)
+            response = await self._process_ai_response(
+                self.latest_messages_data, parsing_method
+            )
 
             if await response.has_error():
                 if self.retry_count < self.config.max_retries:
@@ -317,8 +319,6 @@ class Assistant(ABC, Generic[TInput, TResponse]):
 
             # Reset retry count on successful processing
             self.retry_count = 0
-
-            logger.info(f"AI response: {response.serialize}.")
 
             return response
 

@@ -2,6 +2,7 @@ import os
 import copy
 import traceback
 import asyncio
+import json
 from typing import List, Tuple, Optional, Dict, Union, Any, NoReturn
 from omegaconf import DictConfig
 from hydra import compose
@@ -79,6 +80,8 @@ from magic_tales_models.models.story_state import StoryState
 
 from .story_manager import StoryManager
 from .database_manager import DatabaseManager
+from services.custom_exceptions.custom_exceptions import NotADictionaryError
+
 from magic_tales_models.models.command import Command
 from magic_tales_models.models.response import ResponseStatus
 from magic_tales_models.models.message import (
@@ -264,8 +267,9 @@ class MagicTalesCoreOrchestrator:
 
         self.user_language = self.user_dict.get("language", "ENG")
 
-        logger.info(f"User current Assistant id: {assistant_id}")
-        logger.info(f"User current Helper id: {helper_id}")
+        logger.info(f"User current Assistant id on DB: {assistant_id}")
+        logger.info(f"User current Helper id on DB: {helper_id}")
+        logger.info(f"User current Supervisor id on DB: {supervisor_id}")
 
         files_paths = await self._fetch_user_data_and_update_knowledge_base()
         await self._initialize_assistants(
@@ -303,12 +307,13 @@ class MagicTalesCoreOrchestrator:
         Args:
             assistant_id (Optional[str]): The ID of the chat assistant.
             helper_id (Optional[str]): The ID of the helper assistant.
+            supervisor_id (Optional[str]): The ID of the supervisor assistant.
         """
         # CHAT ASSISTANT
         try:
             await self.chat_assistant.start_assistant(assistant_id, files_paths)
         except ValueError as e:
-            logger.error(f"Error initializing chat assistant: {e}")
+            logger.error(f"Error initializing the Chat assistant: {e}")
             await self._send_error_message(
                 "We are currently experiencing technical difficulties. Please try again later."
             )
@@ -326,7 +331,7 @@ class MagicTalesCoreOrchestrator:
         try:
             await self.helper_assistant.start_assistant(helper_id, files_paths)
         except ValueError as e:
-            logger.error(f"Error initializing helper assistant: {e}")
+            logger.error(f"Error initializing the Helper assistant: {e}")
             await self._send_error_message(
                 "We are currently experiencing technical difficulties. Please try again later."
             )
@@ -340,11 +345,11 @@ class MagicTalesCoreOrchestrator:
                 self.user_id, {"helper_id": self.helper_assistant.openai_assistant.id}
             )
 
-        # Supervisor ASSISTANT
+        # SUPERVISOR ASSISTANT
         try:
-            await self.supervisor_assistant.start_assistant(supervisor_id)
+            await self.supervisor_assistant.start_assistant(None, files_paths)
         except ValueError as e:
-            logger.error(f"Error initializing chat assistant: {e}")
+            logger.error(f"Error initializing the Supervisor assistant: {e}")
             await self._send_error_message(
                 "We are currently experiencing technical difficulties. Please try again later."
             )
@@ -354,9 +359,10 @@ class MagicTalesCoreOrchestrator:
             logger.warn(
                 f"User {self.user_id} had Supervisor assistant {supervisor_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
             )
-            # await self.database_manager.update_user_record_by_id(
-            #     self.user_id, {"supervisor_id": self.supervisor_assistant.openai_assistant.id}
-            # )
+            await self.database_manager.update_user_record_by_id(
+                self.user_id,
+                {"supervisor_id": self.supervisor_assistant.openai_assistant.id},
+            )
 
     async def handle_command_new_tale(self, frontend_request: WSInput):
         if await self.last_story_finished_correctly(self.user_id):
@@ -660,10 +666,30 @@ class MagicTalesCoreOrchestrator:
         return
 
     async def supervisor_chat_assistant_message(
-        self, chat_assistant_response: dict
+        self, num_messages: int
     ) -> SupervisorAssistantResponse:
+        """
+        Sends the latest messages to the supervisor assistant for analysis and intervention.
+
+        Args:
+            num_messages (int): The number of latest messages to send to the supervisor.
+
+        Returns:
+            SupervisorAssistantResponse: The response from the supervisor assistant.
+        """
+        latest_messages = self.chat_assistant.latest_messages_data[-num_messages:]
+
+        # Extract the relevant information from the Message objects
+        formatted_messages = []
+        for message in latest_messages:
+            content = message.content[0].text.value if message.content else ""
+            formatted_messages.append({"role": message.role, "content": content})
+
+        # Convert formatted_messages to JSON string
+        message_json = json.dumps(formatted_messages)
+
         message_for_supervisor = SupervisorAssistantInput(
-            message=chat_assistant_response, source=Source.SYSTEM
+            message=message_json, source=Source.SYSTEM
         )
 
         # Generate AI response for the System
@@ -694,23 +720,35 @@ class MagicTalesCoreOrchestrator:
         chat_assistant_response: ChatAssistantResponse = (
             await self.chat_assistant.request_ai_response(message_for_assistant)
         )
+        ai_message_for_user = await chat_assistant_response.get_message_for_user()
+        ai_message_for_system = await chat_assistant_response.get_message_for_system()
 
+        logger.info(f"Chat Assistant response to User: {ai_message_for_user}")
+        logger.info(f"Chat Assistant response to Sys: {ai_message_for_system}")
+
+        ##################### SUPERVISION ####################
         # Supervise the Chat Assistant message before doing anything
         if self.chat_supervision_required:
             ai_supervisor_response = await self.supervisor_chat_assistant_message(
-                await chat_assistant_response.serialize()
+                num_messages=self.config.supervisor_assistant.num_last_messages_to_use
             )
-
             if await ai_supervisor_response.get_intervention_needed():
+                logger.warning(f"Supervisor: Intervention_needed!!")
                 intervention_message = (
                     await ai_supervisor_response.get_message_for_user()
                 )
+                logger.info(f"Intervetion requested:{intervention_message}")
                 await self._generate_system_request_to_update_user(intervention_message)
                 return
 
-        # If Chat Assitant Didn't need any intervention we continue here.
-        ai_message_for_user = await chat_assistant_response.get_message_for_user()
-        ai_message_for_system = await chat_assistant_response.get_message_for_system()
+        # Construct a response to be sent by the AI Core Interface Layer to the Front End, so the user can see it
+        chat_assistant_response_for_frontend = WSOutput(
+            command=Command.MESSAGE_FOR_HUMAN,
+            message=ai_message_for_user,  # AI-generated response to be displayed for the user
+            token=self.new_token,
+            working=False,  # Indicates that the response is ready
+        )
+        await self.send_message_to_frontend(chat_assistant_response_for_frontend)
 
         if source == Source.USER:
             self.user_language = (
@@ -718,17 +756,7 @@ class MagicTalesCoreOrchestrator:
             )
             logger.info(f"AI detected user language: {self.user_language}")
 
-        logger.info(f"AI response: {ai_message_for_user}")
-
-        # Construct a response to be sent by the AI Core Interface Layer to the Front End
-        chat_assistant_response = WSOutput(
-            command=Command.MESSAGE_FOR_HUMAN,
-            message=ai_message_for_user,  # AI-generated response to be displayed to the user
-            token=self.new_token,
-            working=False,  # Indicates that the response is ready
-        )
-        await self.send_message_to_frontend(chat_assistant_response)
-
+        # If Chat Assitant Didn't need any intervention we continue here.
         if ai_message_for_system:
             logger.warn(
                 f"AI Sent a COMMAND for the Orchestrator: {ai_message_for_system}"
@@ -938,6 +966,9 @@ class MagicTalesCoreOrchestrator:
             # Resetting the StoryManager object to its initial state
             await self.story_manager.reset()
             self.chat_supervision_required = True
+            logger.info(
+                f"Reset executed. chat_supervision_required:{self.chat_supervision_required}"
+            )
 
         except Exception as e:
             logger.error(
@@ -1004,7 +1035,7 @@ class MagicTalesCoreOrchestrator:
             return
 
         if (
-            command == Command.CONTINUE_STORY_GENERATION
+            command == Command.CONTINUE_UNFINISHED_STORY_GENERATION
             and self.wait_for_response_to_continue_where_we_left_off
         ):
             await self._handle_continue_where_we_left_off_response(
@@ -1027,6 +1058,11 @@ class MagicTalesCoreOrchestrator:
                     working=False,  # Indicates that the response is ready
                 )
                 await self.send_message_to_frontend(ai_response)
+            # else:
+            #     await self._generate_system_request_to_update_user(
+            #         self.config.updates_request_prompts.failed_profile_update
+            #     )
+
             return
 
         if command == Command.NEW_PROFILE:
@@ -1037,63 +1073,81 @@ class MagicTalesCoreOrchestrator:
                     self.config.updates_request_prompts.profile_created
                 )
                 await self.story_manager.refresh()
+            # else:
+            #     await self._generate_system_request_to_update_user(
+            #         self.config.updates_request_prompts.failed_profile_creation
+            #     )
             return
 
-    async def _check_for_all_info_to_start_story_generation(
-        self, ai_message_for_system: dict
+    async def _check_for_correct_keys_within_command(
+        self, command: str, required_keys: set, ai_message_for_system: dict
     ) -> bool:
         """
         Checks if the AI message contains all required information to start story generation.
 
         Args:
+            command (str): The command being executed.
+            required_keys (set): The set of required keys for the command.
             ai_message_for_system (dict): The message_for_system dictionary from the AI response.
 
         Returns:
             bool: True if all required information is present, False otherwise.
         """
-
-        required_keys = {
-            "profile_id",
-            "name",
-            "age",
-            "user_id",
-        }  # , "story_features", "story_synopsis", "story_title", "num_chapters"}
         missing_keys = required_keys - set(ai_message_for_system.keys())
 
         if missing_keys:
             logger.error(f"Missing required keys in message_for_system: {missing_keys}")
 
-            # Craft a clear message to the assistant, specifying the missing keys
-            update_message = self.config.updates_request_prompts.missing_keys_at_start_story_generation.format(
-                missing_keys=", ".join(missing_keys)
+            update_message = (
+                self.config.updates_request_prompts.missing_keys_in_command.format(
+                    missing_keys=", ".join(missing_keys), command=command
+                )
             )
             await self._generate_system_request_to_update_user(update_message)
 
             return False
 
-        # Additional Validation:
-        profile_id = ai_message_for_system["profile_id"]
-        name = ai_message_for_system["name"]
-        age = ai_message_for_system["age"]
-        user_id = ai_message_for_system["user_id"]
+        return True
 
-        try:
-            profile_id = int(profile_id)  # Ensure profile_id is an integer
-        except ValueError:
-            logger.error("Invalid profile_id: Expected an integer")
-            await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.invalid_profile_id_at_start_story_generation
-            )
-            return False
+    async def _check_for_correct_profile(
+        self,
+        command: str,
+        ai_message_for_system: dict,
+        profile_fields_mapping: Optional[dict] = None,
+    ) -> bool:
+        """
+        Checks if the selected profile exists in the database.
 
-        # Fetch and validate the profile
+        Args:
+            command (str): The command being executed.
+            ai_message_for_system (dict): The message_for_system dictionary from the AI response.
+            profile_fields_mapping (Optional[dict]): The mapping of profile fields to their corresponding names in the AI message.
+
+        Returns:
+            bool: True if the profile exists, False otherwise.
+        """
+        profile_fields_mapping = profile_fields_mapping or {
+            "id": "profile_id",
+            "name": "name",
+            "age": "age",
+            "user_id": "user_id",
+        }
+
+        profile_data = {
+            field: ai_message_for_system[mapped_name]
+            for field, mapped_name in profile_fields_mapping.items()
+        }
+
         current_profile = await self.database_manager.fetch_profile_by_fields(
-            id=profile_id, name=name, age=age, user_id=user_id
+            **profile_data
         )
+
         if not current_profile:
-            logger.error(f"No profile found with ID: {profile_id}")
+            logger.error("No profile found!")
             await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.profile_selected_does_not_exist
+                self.config.updates_request_prompts.profile_selected_does_not_exist.format(
+                    command=command
+                )
             )
             return False
 
@@ -1102,28 +1156,36 @@ class MagicTalesCoreOrchestrator:
     async def _handle_start_story_generation(self, ai_message_for_system: dict) -> None:
         """
         Handles the start_story_generation command from the AI assistant.
+
+        Args:
+            ai_message_for_system (dict): The message_for_system dictionary from the AI response.
         """
         logger.info("start_story_generation request.")
-        ok_to_proceed = await self._check_for_all_info_to_start_story_generation(
-            ai_message_for_system
+        required_keys = {"profile_id", "name", "age", "user_id"}
+
+        if not await self._check_for_correct_keys_within_command(
+            Command.START_STORY_GENERATION, required_keys, ai_message_for_system
+        ):
+            return
+
+        if not await self._check_for_correct_profile(
+            Command.START_STORY_GENERATION, ai_message_for_system
+        ):
+            return
+
+        logger.info("Updating the database with new story elements from chat")
+        await self._generate_system_request_to_update_user(
+            self.config.updates_request_prompts.chat_info_extraction
         )
 
-        if ok_to_proceed:
-            logger.info("Updating the database with new story elements from chat")
-            ## story_info_dict = ai_message_for_system
-            await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.chat_info_extraction
-            )
-            story_info_dict = await self._extract_chat_key_elements(
-                await self.chat_assistant._retrieve_messages()
-            )
-            story_info_dict["profile_id"] = ai_message_for_system["profile_id"]
-            await self.create_story_foundation_from_chat_elements(story_info_dict)
-            logger.info("Database updated with new story elements from chat")
-            await self._process_story_generation_step(StoryState.STORY_GENERATION)
+        chat_messages = await self.chat_assistant._retrieve_messages()
+        story_info_dict = await self._extract_chat_key_elements(chat_messages)
+        story_info_dict["profile_id"] = ai_message_for_system["profile_id"]
 
-        # If we get here, we must have finished the story!
-        return
+        await self.create_story_foundation_from_chat_elements(story_info_dict)
+        logger.info("Database updated with new story elements from chat")
+
+        await self._process_story_generation_step(StoryState.STORY_GENERATION)
 
     async def _handle_continue_where_we_left_off_response(
         self, ai_message_for_system: dict
@@ -1131,23 +1193,31 @@ class MagicTalesCoreOrchestrator:
         """
         Handles whether the user want to continue an unfinished story where we left it off, or not.
         """
+        logger.info("handling continue_where_we_left_off response")
+        required_keys = {"continue_where_we_left_off"}
+
+        if not await self._check_for_correct_keys_within_command(
+            Command.CONTINUE_UNFINISHED_STORY_GENERATION,
+            required_keys,
+            ai_message_for_system,
+        ):
+            return
+
         continue_where_we_left_off = ai_message_for_system.get(
-            "continue_where_we_left_off", None
+            "continue_where_we_left_off"
         )
+
         logger.info(
             f"'Continue where we left off' RESPOSE received:{continue_where_we_left_off}"
         )
 
         # Ensure that we got a proper response
-        if (
-            continue_where_we_left_off is None
-            or continue_where_we_left_off.lower() not in ("true", "false")
-        ):
+        if continue_where_we_left_off.lower() not in ("true", "false"):
             logging.error(
                 "'Continue where we left off' command by the assistant had no response. Asking assistant to solve it"
             )
             await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.continue_where_we_left_off_response_missing_or_incorrect
+                self.config.updates_request_prompts.continue_where_we_left_off_response_incorrect
             )
             return
 
@@ -1165,60 +1235,71 @@ class MagicTalesCoreOrchestrator:
             ai_message_for_system (dict): The message from the AI system with update details.
         """
         logger.info("Atempting to update profile...")
-        profile_id = ai_message_for_system.get("profile_id", None)
-
-        if not profile_id:
-            logging.error(
-                "Profile ID is required for profile update, but not provided by the assistant. Asking assistant to solve"
-            )
-            await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.no_profile_id_at_update_profile
-            )
+        required_keys = {
+            "profile_id",
+            "current_name",
+            "current_age",
+            "user_id",
+            "updated_name",
+            "updated_age",
+            "updated_details",
+        }
+        profile_fields_mapping = {
+            "id": "profile_id",
+            "name": "current_name",
+            "age": "current_age",
+            "user_id": "user_id",
+        }
+        if not await self._check_for_correct_keys_within_command(
+            Command.UPDATE_PROFILE, required_keys, ai_message_for_system
+        ):
             return False
 
-        profile = await self.database_manager.session.get(Profile, profile_id)
-        if not profile:  # Profile record does not Exist, most likely wrong ID
-            logging.error(
-                "Profile record with this id does not exist on the DB. Asking assistant to solve"
-            )
-            await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.no_profile_record_at_update_profile
-            )
+        if not await self._check_for_correct_profile(
+            Command.UPDATE_PROFILE, ai_message_for_system, profile_fields_mapping
+        ):
             return False
 
-        logger.info(f"Profile extracted:{profile_id}")
+        profile_id = ai_message_for_system["profile_id"]
 
-        name = ai_message_for_system.get("name", None)
-        age = ai_message_for_system.get("age", None)
-        details = ai_message_for_system.get("details", None)
+        # Ensure there is at least something to update
+        updated_name = ai_message_for_system["updated_name"]
+        updated_age = ai_message_for_system["updated_age"]
+        updated_details = ai_message_for_system["updated_details"]
 
-        # Ensure there there is at least something to update
-        if not name or not age or not details:
+        if not updated_name or not updated_age or not updated_details:
             logging.error(
-                "Name, age and details are required for profile update, but one or more were NOT provided by the assistant. Asking assistant to solve"
+                "At least one of the following name, age or details are required for profile update, but one or more were NOT provided by the assistant. Asking assistant to solve"
             )
             await self._generate_system_request_to_update_user(
                 self.config.updates_request_prompts.no_info_at_update_profile
             )
             return
 
-        logger.info(f"profile UPDATES:\nName:{name}\nAge:{age}\nDetails:{details}")
-
-        # Fetch existing profile details
-        # current_profile = await self.database_manager.fetch_profile_by_id(profile_id)
-        # existing_details = current_profile.details if current_profile else ""
-        # logger.info(f"current profile details:\n{existing_details}")
-
-        # # Merge updates using the Information Extractor Assistant
-        # merged_details = await self.merge_profile_updates(existing_details, updates)
-        # logger.info(f"merged profile details:\n{merged_details}")
+        logger.info(
+            f"profile UPDATES requested:\nName:{updated_name}\nAge:{updated_age}\nDetails:{updated_details}"
+        )
 
         try:
-            await self.database_manager.update_profile_record_by_id(
-                profile_id, {"name": name, "age": age, "details": details}
-            )
-            await self.story_manager.refresh()
-            return True
+            update_dict = {}
+            if updated_name:
+                update_dict["name"] = updated_name
+            if updated_age:
+                update_dict["age"] = updated_age
+            if updated_details:
+                update_dict["details"] = updated_details
+
+            # Only perform the update if there are fields to update
+            if update_dict:
+                await self.database_manager.update_profile_record_by_id(
+                    profile_id, update_dict
+                )
+                await self.story_manager.refresh()
+                return True
+            else:
+                logger.warning("No fields to update. Skipping update.")
+                return False
+
         except Exception as e:
             logger.error(f"Failed to Update the profile: {traceback.format_exc()}")
             return False
@@ -1231,9 +1312,20 @@ class MagicTalesCoreOrchestrator:
             ai_message_for_system (dict): The message from the AI system with update details.
         """
         logger.info("Atempting to create a new profile...")
-        name = ai_message_for_system.get("name", None)
-        age = ai_message_for_system.get("age", None)
-        details = ai_message_for_system.get("details", None)
+        required_keys = {
+            "name",
+            "age",
+            "details",
+        }
+
+        if not await self._check_for_correct_keys_within_command(
+            Command.UPDATE_PROFILE, required_keys, ai_message_for_system
+        ):
+            return
+
+        name = ai_message_for_system.get("name")
+        age = ai_message_for_system.get("age")
+        details = ai_message_for_system.get("details")
 
         # Ensure there there is at least something to update
         if not name or not age or not details:
@@ -1245,13 +1337,15 @@ class MagicTalesCoreOrchestrator:
             )
             return False
 
-        logger.info(f"profile UPDATES:\nName:{name}\nAge:{age}\nDetails:{details}")
-
         try:
             await self.database_manager.create_profile_from_chat_details(
                 {"name": name, "age": age, "details": details, "user_id": self.user_id}
             )
             await self.story_manager.refresh()
+            logger.info(
+                f"NEW profile created:\nName:{name}\nAge:{age}\nDetails:{details}\nuser_id: {self.user_id}"
+            )
+
             return True
         except Exception as e:
             logger.error(f"Failed to Create the profile: {traceback.format_exc()}")

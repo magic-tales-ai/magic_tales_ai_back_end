@@ -5,5 +5,4 @@ instructions_path: "services/openai_assistants/helper_assistant/instructions/hel
 story_features_extraction_prompt_path: "services/openai_assistants/helper_assistant/instructions/story_features_extraction_prompt.txt"
 synopsis_extraction_prompt_path: "services/openai_assistants/helper_assistant/instructions/synopsis_extraction_prompt.txt"
 tools:
-  - type: "file_search"
-  - type: "code_interpreter"
+  - type: "file_search" 

@@ -33,9 +33,7 @@ class ChatAssistantResponse(AssistantResponse):
         }
 
     async def get_user_language(self) -> Optional[str]:
-        logger.info(
-            f"Returning user_language: {self.user_language}"
-        )  # Add logging here
+        logger.info(f"Returning user_language: {self.user_language}")
         return self.user_language
 
     async def get_message_for_system(self) -> Optional[dict]:
