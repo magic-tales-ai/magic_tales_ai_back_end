@@ -396,6 +396,10 @@ class MagicTalesCoreOrchestrator:
                 data={"conversations": conversation_dicts},
             )
         )
+        await self._generate_system_request_to_update_user(
+                self.config.updates_request_prompts.coversation_recovery,
+                conversation=conversation_dicts,
+            )             
 
     async def handle_command_link_user_with_conversations(
         self, frontend_request: WSInput
@@ -430,31 +434,7 @@ class MagicTalesCoreOrchestrator:
             frontend_request.model_dump(),
         )
         await self.story_manager.refresh()
-
-    async def _handle_conversation_recovery(self, frontend_request: WSInput) -> None:
-        """
-        Handle the conversation recovery command.
-
-        Args:
-            frontend_request (WSInput): The incoming command request.
-        """
-        if not self.websocket.uid:
-            raise ValueError("uid is required for conversation recovery")
-
-        conversations = await self.database_manager.fetch_messages_for_session(
-            self.websocket.uid
-        )
-        conversation_dicts = [
-            MessageSchema().dump(conversation) for conversation in conversations
-        ]
-
-        await self.send_message_to_frontend(
-            WSOutput(
-                command=frontend_request.command,
-                token=self.new_token,
-                data={"conversations": conversation_dicts},
-            )
-        )
+    
 
     async def _handle_link_user_with_conversations(
         self, frontend_request: WSInput
@@ -689,7 +669,7 @@ class MagicTalesCoreOrchestrator:
         message_json = json.dumps(formatted_messages)
 
         message_for_supervisor = SupervisorAssistantInput(
-            message=message_json, source=Source.SYSTEM
+            message=message_json, source=Source.USER
         )
 
         # Generate AI response for the System
@@ -712,6 +692,8 @@ class MagicTalesCoreOrchestrator:
         Returns:
             None
         """
+        await self.send_working_command_to_frontend(True)
+
         message_for_assistant = ChatAssistantInput(
             message=request.message, source=source
         )
@@ -737,7 +719,7 @@ class MagicTalesCoreOrchestrator:
                 intervention_message = (
                     await ai_supervisor_response.get_message_for_user()
                 )
-                logger.info(f"Intervetion requested:{intervention_message}")
+                logger.info(f"Intervetion message:{intervention_message}")
                 await self._generate_system_request_to_update_user(intervention_message)
                 return
 
@@ -749,8 +731,10 @@ class MagicTalesCoreOrchestrator:
             working=False,  # Indicates that the response is ready
         )
         await self.send_message_to_frontend(chat_assistant_response_for_frontend)
+        await self.send_working_command_to_frontend(False)
 
         if source == Source.USER:
+            self.chat_supervision_required = True
             self.user_language = (
                 await chat_assistant_response.get_user_language() or "ENG"
             )
@@ -835,7 +819,7 @@ class MagicTalesCoreOrchestrator:
 
         Returns:
             None.
-        """
+        """        
         # By Default
         request_message = request_message.replace("{user_info}", f"{self.user_dict}")
 
@@ -915,6 +899,8 @@ class MagicTalesCoreOrchestrator:
         Args:
             current_step (StoryState): The current step to be processed.
         """
+        self.chat_supervision_required = False
+
         while current_step is not StoryState.FINAL_DOCUMENT_GENERATED:
             method_name = self.steps_execution_mapping.get(current_step)
             if method_name and hasattr(self, method_name):
@@ -1029,8 +1015,7 @@ class MagicTalesCoreOrchestrator:
             )
             return
 
-        if command == Command.START_STORY_GENERATION:
-            self.chat_supervision_required = False
+        if command == Command.START_STORY_GENERATION:            
             await self._handle_start_story_generation(ai_message_for_system)
             return
 
