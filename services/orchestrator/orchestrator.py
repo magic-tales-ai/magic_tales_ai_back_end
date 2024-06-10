@@ -276,7 +276,7 @@ class MagicTalesCoreOrchestrator:
             assistant_id, helper_id, supervisor_id, files_paths
         )
 
-        user_message = self._generate_starting_message(try_mode=try_mode)
+        user_message = await self._generate_starting_message(try_mode=try_mode)
         await self._generate_system_request_to_update_user(user_message)
 
         await self.story_manager.refresh()
@@ -981,7 +981,7 @@ class MagicTalesCoreOrchestrator:
         await self.story_manager.update_story_step(step)
         logger.info(f"Story state updated to {step.name}")
 
-    def _generate_starting_message(self, try_mode: bool = False) -> str:
+    async def _generate_starting_message(self, try_mode: bool = False) -> str:
         """
         Generates a starting message for the user based on the presence of a knowledge base.
 

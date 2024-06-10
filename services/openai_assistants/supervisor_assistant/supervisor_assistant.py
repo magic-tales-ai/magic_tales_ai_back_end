@@ -40,14 +40,14 @@ class SupervisorAssistant(
             A SupervisorAssistantResponse containing: `message_for_user` as str and `message_for_system` as a dict or None for each if not applicable or errors occur.
         """
         try:
-            # Remove surrounding characters and escape single quotes
-            sanitized_content = ai_message_content.strip("\`\n").replace("'", "\\'")
+            # # Remove surrounding characters and escape single quotes
+            # sanitized_content = ai_message_content.strip("\`\n").replace("'", "\\'")
 
-            # Remove leading and trailing quotes
-            sanitized_content = sanitized_content.strip('"')
+            # # Remove leading and trailing quotes
+            # sanitized_content = sanitized_content.strip('"')
 
-            # Replace escaped double quotes with single quotes
-            sanitized_content = sanitized_content.replace('\\"', '"')
+            # # Replace escaped double quotes with single quotes
+            # sanitized_content = sanitized_content.replace('\\"', '"')
 
             sanitized_content = ai_message_content
 
