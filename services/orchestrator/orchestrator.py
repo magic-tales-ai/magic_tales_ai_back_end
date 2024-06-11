@@ -1094,11 +1094,10 @@ class MagicTalesCoreOrchestrator:
 
         return True
 
-    async def _check_for_correct_profile(
-        self,
-        command: str,
+    async def _check_profile_exists(
+        self,        
         ai_message_for_system: dict,
-        profile_fields_mapping: Optional[dict] = None,
+        profile_fields_mapping: Optional[dict] = None,        
     ) -> bool:
         """
         Checks if the selected profile exists in the database.
@@ -1128,12 +1127,7 @@ class MagicTalesCoreOrchestrator:
         )
 
         if not current_profile:
-            logger.error("No profile found!")
-            await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.profile_selected_does_not_exist.format(
-                    command=command
-                )
-            )
+            logger.warn("No profile found!")            
             return False
 
         return True
@@ -1153,9 +1147,14 @@ class MagicTalesCoreOrchestrator:
         ):
             return
 
-        if not await self._check_for_correct_profile(
-            Command.START_STORY_GENERATION, ai_message_for_system
+        if not await self._check_profile_exists(
+            ai_message_for_system
         ):
+            await self._generate_system_request_to_update_user(
+                self.config.updates_request_prompts.profile_selected_does_not_exist.format(
+                    command=Command.START_STORY_GENERATION
+                )
+            )
             return
 
         logger.info("Updating the database with new story elements from chat")
@@ -1240,9 +1239,14 @@ class MagicTalesCoreOrchestrator:
         ):
             return False
 
-        if not await self._check_for_correct_profile(
-            Command.UPDATE_PROFILE, ai_message_for_system, profile_fields_mapping
+        if not await self._check_profile_exists(
+            ai_message_for_system, profile_fields_mapping
         ):
+            await self._generate_system_request_to_update_user(
+                self.config.updates_request_prompts.profile_selected_does_not_exist.format(
+                    command=Command.UPDATE_PROFILE
+                )
+            )
             return False
 
         profile_id = ai_message_for_system["profile_id"]
@@ -1302,6 +1306,11 @@ class MagicTalesCoreOrchestrator:
             "age",
             "details",
         }
+        profile_fields_mapping = {         
+            "name": "name",
+            "age": "age",
+            "user_id": "user_id",
+        }
 
         if not await self._check_for_correct_keys_within_command(
             Command.UPDATE_PROFILE, required_keys, ai_message_for_system
@@ -1311,21 +1320,36 @@ class MagicTalesCoreOrchestrator:
         name = ai_message_for_system.get("name")
         age = ai_message_for_system.get("age")
         details = ai_message_for_system.get("details")
+        user_id = self.user_id
 
-        # Ensure there there is at least something to update
+        new_profile = {
+            "name": name,
+            "age": age,
+            "details": details,
+            "user_id": user_id,
+        }
+
+        # Ensure there ALL Fields are there, not just some
         if not name or not age or not details:
             logging.error(
-                "Name, age and details are required to create a new profile, but none were provided by the assistant. Asking assistant to solve"
+                "Name, age and details are ALL required to create a new profile, but none were provided by the assistant. Asking assistant to solve"
             )
             await self._generate_system_request_to_update_user(
                 self.config.updates_request_prompts.no_info_at_create_profile
             )
             return False
 
-        try:
-            await self.database_manager.create_profile_from_chat_details(
-                {"name": name, "age": age, "details": details, "user_id": self.user_id}
+        if await self._check_profile_exists(
+            new_profile, profile_fields_mapping
+        ):
+            logger.error(f"Profile Already Exist:\nName: {name}\nAge: {age}\nUser_id:{user_id}")
+            await self._generate_system_request_to_update_user(
+                self.config.updates_request_prompts.new_profile_already_exists()
             )
+            return False
+        
+        try:
+            await self.database_manager.create_profile_from_chat_details(new_profile)
             await self.story_manager.refresh()
             logger.info(
                 f"NEW profile created:\nName:{name}\nAge:{age}\nDetails:{details}\nuser_id: {self.user_id}"

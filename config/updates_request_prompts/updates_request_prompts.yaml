@@ -16,7 +16,7 @@ starting_message_new_user: |
 profile_updated: |
     Very briefly inform the user in a friendly manner that their profile has been updated succesfully with the info they provided.
     Express sincere gratitude for their patience.
-    The attached file containig all the user information about themselves, their profiles and stories has been updated. Use this file and its content as ground truth.
+    The attached file containig all the user information about themselves, their profiles and all their stories and stories has been updated. Use this file and its content as ground truth.
     You and the user can continue where you left off.
 
 failed_profile_update: |
@@ -24,19 +24,19 @@ failed_profile_update: |
     Express sincere apologies and gratitude for their patience.
     MagicTales Team is working to fix this problem.    
     Also keep this in mind since everything will stay the same in this profile, for now.
-    Use always the attached file containig all the user information about themselves, their profiles as ground truth.
+    Use always the attached file containig all the user information about themselves, their profiles and all their stories as ground truth.
 
 profile_created: |
     Share the good news with the user very concisely and warmly that their new profile has been succesfuly created using their input.
     Express sincere gratitude for their patience.
-    The attached file containig all the user information about themselves, their profiles and stories has been updated. Use this file and its content as ground truth.
+    The attached file containig all the user information about themselves, their profiles and all their stories and stories has been updated. Use this file and its content as ground truth.
     You and the user can continue where you left off.
 
 failed_profile_creation: |
     Very briefly inform the user in a friendly manner that due some issues with the database we have FAILED to create their new profile.
     Express sincere aplogies and gratitude for their patience. MagicTales Team is working to fix this problem.
     Also keep this in mind since we do not have this new profile, for now.
-    Use always the attached file containig all the user information about themselves, their profiles as ground truth.
+    Use always the attached file containig all the user information about themselves, their profiles and all their stories as ground truth.
 
 chat_info_extraction: |
     Let the user know very concisely and affably that MagicTales AI Team is carefully reviewing this conversation with the user to gather key details that the AI crafting team will use to create the perfect story.
@@ -50,7 +50,7 @@ no_info_at_update_profile: |
     ALL KEYS IN THE 'update_profile' COMMAND JSON FORMAT MUST BE PRESENT.
     At least one of these 'updated_name', 'updated_age' or 'updated_details' is required (NOT EMPTY STRING) for a profile update, but NONE were provided when you triggered an 'update_profile' command. Make sure you provide the correct information the user wants to update.
     DO NOT INVENT ANY DATA.
-    Use always the attached file containig all the user information about themselves, their profiles as ground truth. This is the infomation currently on the database.
+    Use always the attached file containig all the user information about themselves, their profiles and all their stories as ground truth. This is the infomation currently on the database.
     Also make sure you both have agreed UNEQUIVOCALLY what profile to update.
 
 no_info_at_create_profile: |
@@ -59,12 +59,17 @@ no_info_at_create_profile: |
     Make sure you provide the correct information the user wants to use for their new profile.
     Also make sure the user is aware and in full agreement that we are going to create a new profile.
 
+new_profile_already_exists: |   
+    The profile you are requesting to create using the 'new_profile' command alredy exists! You migth have got into an error and tried twice.
+    Before sending any command that will alter the database (updat or create a profile), always look and double check the attached file containig all the latest user information about themselves, their profiles and all their stories. Treat this file as ground truth. This is the infomation currently on the database.
+    Also make sure the user is aware and in full agreement that we are going to create a new profile.
+
 profile_selected_does_not_exist: |
     The combination of `profile_id`, `name`, `age` and `user_id` provided in the '{command}' command does NOT match any record on the profile table on our database.
     Make sure you find out from the conversation, the user and from the file attached (your ground truth), what profile 'id', 'name', 'age' and 'user_id' is univocally associated with the profile the user wants to use for the '{command}' command.
     If you already know, for sure this information then re-submit you message to the system and no message to the user is neccesary, otherwise, let the user know extremely briefly and nicely what the problem is and what are you going to do to solve it.
     If this happens repeatedly, it is most likely you are not looking at the information provided through the attached file in detail.
-    Use always the attached file containig all the user information about themselves, their profiles as ground truth. This is the infomation currently on the database.This is the infomation currently on the database.
+    Use always the attached file containig all the user information about themselves, their profiles and all their stories as ground truth. This is the infomation currently on the database.This is the infomation currently on the database.
 
 incomplete_story_found: |
     Very briefly inform the user in a friendly manner that we found that their last story was not finished correctly. 
