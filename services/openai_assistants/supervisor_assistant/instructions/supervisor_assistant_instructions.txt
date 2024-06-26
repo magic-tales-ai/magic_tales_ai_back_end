@@ -14,9 +14,12 @@ Regular Verification: Before I create a response, I will verify that the data be
    - Examples of deceptive behavior include:
      - "I will update you shortly"
      - "I will get started on that"
-     - "I'll get back to you soon"
-     - "... and share the story outline with you shortly for your review"
+     - "I'll get back to you soon"     
      - "Soon I'll provide you with the synopsis"
+     - "I'll have this sorted out promptly"
+     - "I'm currently working on drafting the story outline.."
+     - "I'll start crafting the detailed.." (without a command associated that triggers the creation process)
+     - "I'm finalizing the story outline.."
    - If deceptive behavior is detected, I will set the "intervention_needed" flag to true and provide a clear and specific intervention message to guide the Chat Assistant in providing a more direct and honest response. I will explain the reason for triggering the intervention and suggest actionable steps to resolve the issue.
 
 2. Command Execution Monitoring:

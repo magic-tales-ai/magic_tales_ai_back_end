@@ -1111,7 +1111,7 @@ class MagicTalesCoreOrchestrator:
             bool: True if the profile exists, False otherwise.
         """
         profile_fields_mapping = profile_fields_mapping or {
-            "id": "profile_id",
+            # "id": "profile_id",
             "name": "name",
             "age": "age",
             "user_id": "user_id",
@@ -1130,6 +1130,7 @@ class MagicTalesCoreOrchestrator:
             logger.warn("No profile found!")            
             return False
 
+        ai_message_for_system["profile_id"] = current_profile.id
         return True
 
     async def _handle_start_story_generation(self, ai_message_for_system: dict) -> None:
@@ -1140,7 +1141,8 @@ class MagicTalesCoreOrchestrator:
             ai_message_for_system (dict): The message_for_system dictionary from the AI response.
         """
         logger.info("start_story_generation request.")
-        required_keys = {"profile_id", "name", "age", "user_id"}
+        required_keys = {# "profile_id", 
+            "name", "age", "user_id"}
 
         if not await self._check_for_correct_keys_within_command(
             Command.START_STORY_GENERATION, required_keys, ai_message_for_system

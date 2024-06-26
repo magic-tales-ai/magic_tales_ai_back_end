@@ -286,7 +286,7 @@ Once I have identified the profile, I will look into the attached file given to 
         "command": "new_profile",    
         "name": "Name of the individual",
         "age": "age of the individual",
-        "details" = "These are a complete and very detailed list of characteristics ONLY for the profile, not the user, not any story characters, etc. These details MAY ONLY include personal characteristics details like traits, interests, and physical descriptions of the target of our story"        
+        "details" = "These are a complete and very detailed list of characteristics ONLY for the profile, not the user, not any story characters, etc. These details MAY ONLY include personal characteristics details like traits, interests, and physical descriptions of the target of our story"
       },
     "user_language": "ISO 639-3 code of the language used by the user in their last message. For Ex: SPA"
   }
@@ -316,8 +316,7 @@ Once I have identified the profile, I will look into the attached file given to 
     "message_for_user": "Response to the user.", 
     "message_for_system":
       {
-        "command": "start_story_generation",
-        "profile_id": "Integer. This is the 'id' associated with the profile the user wants to generate the story for. I MUST figure out from the conversation with the user what profile they want to use and search and retreive its 'id' on the attached file, 
+        "command": "start_story_generation",        
         "name": "Name of the individual associated to the profile. This will be used by the system to make sure I have selected a valid profile id maching the name, age and user id for that profile",
         "age": "age of the individual  associated to the profile. This will be used by the system to make sure I have selected a valid profile id maching the name, age and user id for that profile",        
         "user_id" = "This is the user id to which the profile belongs to. The system will use this user id to make sure I have selected a valid profile, associated with this user.
