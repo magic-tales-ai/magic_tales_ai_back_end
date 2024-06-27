@@ -397,9 +397,9 @@ class MagicTalesCoreOrchestrator:
             )
         )
         await self._generate_system_request_to_update_user(
-                self.config.updates_request_prompts.coversation_recovery,
-                conversation=conversation_dicts,
-            )             
+            self.config.updates_request_prompts.coversation_recovery,
+            conversation=conversation_dicts,
+        )
 
     async def handle_command_link_user_with_conversations(
         self, frontend_request: WSInput
@@ -434,7 +434,6 @@ class MagicTalesCoreOrchestrator:
             frontend_request.model_dump(),
         )
         await self.story_manager.refresh()
-    
 
     async def _handle_link_user_with_conversations(
         self, frontend_request: WSInput
@@ -819,7 +818,7 @@ class MagicTalesCoreOrchestrator:
 
         Returns:
             None.
-        """        
+        """
         # By Default
         request_message = request_message.replace("{user_info}", f"{self.user_dict}")
 
@@ -1015,7 +1014,7 @@ class MagicTalesCoreOrchestrator:
             )
             return
 
-        if command == Command.START_STORY_GENERATION:            
+        if command == Command.START_STORY_GENERATION:
             await self._handle_start_story_generation(ai_message_for_system)
             return
 
@@ -1095,9 +1094,9 @@ class MagicTalesCoreOrchestrator:
         return True
 
     async def _check_profile_exists(
-        self,        
+        self,
         ai_message_for_system: dict,
-        profile_fields_mapping: Optional[dict] = None,        
+        profile_fields_mapping: Optional[dict] = None,
     ) -> bool:
         """
         Checks if the selected profile exists in the database.
@@ -1127,7 +1126,7 @@ class MagicTalesCoreOrchestrator:
         )
 
         if not current_profile:
-            logger.warn("No profile found!")            
+            logger.warn("No profile found!")
             return False
 
         ai_message_for_system["profile_id"] = current_profile.id
@@ -1141,17 +1140,14 @@ class MagicTalesCoreOrchestrator:
             ai_message_for_system (dict): The message_for_system dictionary from the AI response.
         """
         logger.info("start_story_generation request.")
-        required_keys = {# "profile_id", 
-            "name", "age", "user_id"}
+        required_keys = {"name", "age", "user_id"}  # "profile_id",
 
         if not await self._check_for_correct_keys_within_command(
             Command.START_STORY_GENERATION, required_keys, ai_message_for_system
         ):
             return
 
-        if not await self._check_profile_exists(
-            ai_message_for_system
-        ):
+        if not await self._check_profile_exists(ai_message_for_system):
             await self._generate_system_request_to_update_user(
                 self.config.updates_request_prompts.profile_selected_does_not_exist.format(
                     command=Command.START_STORY_GENERATION
@@ -1164,14 +1160,16 @@ class MagicTalesCoreOrchestrator:
             self.config.updates_request_prompts.chat_info_extraction
         )
 
+        await self.send_working_command_to_frontend(True)
         chat_messages = await self.chat_assistant._retrieve_messages()
         story_info_dict = await self._extract_chat_key_elements(chat_messages)
         story_info_dict["profile_id"] = ai_message_for_system["profile_id"]
 
         await self.create_story_foundation_from_chat_elements(story_info_dict)
         logger.info("Database updated with new story elements from chat")
-
+        
         await self._process_story_generation_step(StoryState.STORY_GENERATION)
+        await self.send_working_command_to_frontend(False)
 
     async def _handle_continue_where_we_left_off_response(
         self, ai_message_for_system: dict
@@ -1308,7 +1306,7 @@ class MagicTalesCoreOrchestrator:
             "age",
             "details",
         }
-        profile_fields_mapping = {         
+        profile_fields_mapping = {
             "name": "name",
             "age": "age",
             "user_id": "user_id",
@@ -1341,15 +1339,15 @@ class MagicTalesCoreOrchestrator:
             )
             return False
 
-        if await self._check_profile_exists(
-            new_profile, profile_fields_mapping
-        ):
-            logger.error(f"Profile Already Exist:\nName: {name}\nAge: {age}\nUser_id:{user_id}")
+        if await self._check_profile_exists(new_profile, profile_fields_mapping):
+            logger.error(
+                f"Profile Already Exist:\nName: {name}\nAge: {age}\nUser_id:{user_id}"
+            )
             await self._generate_system_request_to_update_user(
                 self.config.updates_request_prompts.new_profile_already_exists()
             )
             return False
-        
+
         try:
             await self.database_manager.create_profile_from_chat_details(new_profile)
             await self.story_manager.refresh()
@@ -1531,18 +1529,27 @@ class MagicTalesCoreOrchestrator:
         num_chapters = updates.get("num_chapters")
 
         # Define paths for story and image storage based on user-specific directories
+
+        # Get the environment variables
+        static_folder = os.environ.get("STATIC_FOLDER")        
+
         stories_root_dir = os.path.join(
-            self.config.output_artifacts.stories_root_dir, f"user_{self.user_id}"
+            static_folder,
+            self.config.output_artifacts.stories_root_dir,
+            f"user_{self.user_id}",
         )
+        logging.warning(f"Stories root folder:{stories_root_dir}")
 
         story_folder, images_subfolder = create_new_story_directory(
             stories_root_dir, subfolders=self.subfolders
         )
+        logging.warning(f"Story folder:{story_folder}")
+        logging.warning(f"Image folder:{images_subfolder}")
 
         # Create the story using the StoryManager class
         try:
             await self.story_manager.create_story(
-                profile_id=profile_id,
+                    profile_id=profile_id,
                 ws_session_uid=self.websocket.uid,  # Websocket session UID associated with the story. (self.session.identity_key returns a reference to the method, not a valid attribute)
                 title=title,
                 features=features,
@@ -1976,12 +1983,14 @@ class MagicTalesCoreOrchestrator:
             logger.info(f"Story document saved in: {final_pdf_file_path}")
             message = "In a few words, let the user know that we have finished and that the entire team at Magic-Tales.ai hope they enjoy this story!"
             await self._generate_system_request_to_update_user(message)
-
-            http_base_url = "http://localhost:8000"
+            
+            react_api_url = os.environ.get('REACT_APP_API_URL')
+            url = f"{react_api_url}story/{self.story_manager.story.id}/download"
+            logging.info(f"Story to download sent to frontend: {url}")
             await self.create_and_send_progress_update(
                 command=Command.PROCESS_COMPLETED,
                 story_state=str(StoryState.DOCUMENT_GENERATION),
-                files=[http_base_url + final_pdf_file_path],
+                files=[url],
                 data={"story_id": self.story_manager.story.id},
                 progress_percent=100.0,
             )
