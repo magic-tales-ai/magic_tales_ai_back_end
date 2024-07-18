@@ -17,6 +17,26 @@ INPUT_DESCRIPTIONS = {
     "chapter_content": "The Chapter content we are working on.",
 }
 
+# Add this function to prompt_constructor.py
+def compose_cover_message_for_LLM(synopsis: str) -> HumanMessage:
+    """
+    Constructs a human-readable message for cover image generation based on the synopsis.
+
+    Args:
+        synopsis (str): The synopsis of the story.
+
+    Returns:
+        HumanMessage: The constructed human-readable message for cover image generation.
+    """
+    cover_message_template = load_prompt("image_prompt_generator/cover_input_format")
+    cover_message_prompt_template = HumanMessagePromptTemplate.from_template(
+        cover_message_template
+    )
+
+    cover_message = cover_message_prompt_template.format(synopsis=synopsis)
+
+    return cover_message
+
 
 def _get_input_format_description() -> str:
     """
@@ -117,7 +137,8 @@ def compose_system_message_and_create_output_parser() -> (
 def compose_message_for_LLM(
     chapter_number: str,
     chapter_content: str,
-) -> HumanMessage:
+    is_cover: bool = False
+) -> HumanMessage:    
     """
     Constructs a human-readable message based on the given input information that will send to the AI.
 
@@ -127,6 +148,9 @@ def compose_message_for_LLM(
     Returns:
         HumanMessage: The constructed human-readable message.
     """
+    if is_cover:
+        return compose_cover_message_for_LLM(chapter_content)
+    
     # Load the instructions template
     system_message_template = load_prompt("image_prompt_generator/input_format")
     human_message_prompt_template = HumanMessagePromptTemplate.from_template(

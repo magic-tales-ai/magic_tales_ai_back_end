@@ -172,7 +172,7 @@ class MagicTalesCoreOrchestrator:
 
         self.story_manager = StoryManager(db_manager=self.database_manager)
 
-        self.wait_for_response_to_continue_where_we_left_off = False
+        self.waiting_for_response_to_continue_where_we_left_off = False
 
         self.frontend_command_handlers = {
             Command.NEW_TALE: self.handle_command_new_tale,
@@ -181,7 +181,7 @@ class MagicTalesCoreOrchestrator:
             Command.CONVERSATION_RECOVERY: self.handle_command_conversation_recovery,
             Command.LINK_USER_WITH_CONVERSATIONS: self.handle_command_link_user_with_conversations,
             Command.USER_MESSAGE: self._handle_communication_with_assistant,
-            Command.USER_LOGGED_IN: self.last_story_finished_correctly,
+            Command.USER_LOGGED_IN: self.handle_command_new_tale,
         }
 
         self.user_language = None
@@ -366,9 +366,8 @@ class MagicTalesCoreOrchestrator:
 
     async def handle_command_new_tale(self, frontend_request: WSInput):
         if await self.last_story_finished_correctly(self.user_id):
-            asyncio.create_task(self._handle_new_tale())
-        else:
-            self.wait_for_response_to_continue_where_we_left_off = True
+            asyncio.create_task(self._handle_new_tale())        
+            
 
     async def handle_command_spin_off(self, frontend_request: WSInput):
         if not frontend_request.story_id:
@@ -521,15 +520,17 @@ class MagicTalesCoreOrchestrator:
                 logger.info(
                     "Last story completed; waiting for user to start a new story."
                 )
+                self.waiting_for_response_to_continue_where_we_left_off = False
                 return True
             else:
                 logger.info(
                     f"Last story completed step was: {StoryState(self.latest_story.last_successful_step).name}"
                 )
+                self.waiting_for_response_to_continue_where_we_left_off = True
                 # Process to resume the story
                 await self._generate_system_request_to_update_user(
                     self.config.updates_request_prompts.incomplete_story_found
-                )
+                )                
                 return False
         else:
             # Log that no story is available; await user action to start new.
@@ -656,27 +657,39 @@ class MagicTalesCoreOrchestrator:
         Returns:
             SupervisorAssistantResponse: The response from the supervisor assistant.
         """
-        latest_messages = self.chat_assistant.latest_messages_data[-num_messages:]
+        all_messages = self.chat_assistant.latest_messages_data
+        latest_messages = all_messages[:num_messages]
 
-        # Extract the relevant information from the Message objects
-        formatted_messages = []
-        for message in latest_messages:
-            content = message.content[0].text.value if message.content else ""
-            formatted_messages.append({"role": message.role, "content": content})
-
-        # Convert formatted_messages to JSON string
+        formatted_messages = self._format_messages(latest_messages)
         message_json = json.dumps(formatted_messages)
 
         message_for_supervisor = SupervisorAssistantInput(
             message=message_json, source=Source.USER
         )
 
-        # Generate AI response for the System
         ai_supervisor_response: SupervisorAssistantResponse = (
             await self.supervisor_assistant.request_ai_response(message_for_supervisor)
         )
 
         return ai_supervisor_response
+
+    def _format_messages(self, messages: List[Any]) -> List[Dict[str, str]]:
+        """
+        Extracts relevant information from Message objects.
+
+        Args:
+            messages (List[Any]): List of Message objects.
+
+        Returns:
+            List[Dict[str, str]]: Formatted messages.
+        """
+        return [
+            {
+                "role": message.role,
+                "content": message.content[0].text.value if message.content else ""
+            }
+            for message in messages
+        ]
 
     async def _handle_communication_with_assistant(
         self, request: WSInput, source: Source = Source.USER
@@ -1020,7 +1033,7 @@ class MagicTalesCoreOrchestrator:
 
         if (
             command == Command.CONTINUE_UNFINISHED_STORY_GENERATION
-            and self.wait_for_response_to_continue_where_we_left_off
+            and self.waiting_for_response_to_continue_where_we_left_off
         ):
             await self._handle_continue_where_we_left_off_response(
                 ai_message_for_system
@@ -1167,7 +1180,7 @@ class MagicTalesCoreOrchestrator:
 
         await self.create_story_foundation_from_chat_elements(story_info_dict)
         logger.info("Database updated with new story elements from chat")
-        
+
         await self._process_story_generation_step(StoryState.STORY_GENERATION)
         await self.send_working_command_to_frontend(False)
 
@@ -1205,7 +1218,7 @@ class MagicTalesCoreOrchestrator:
             )
             return
 
-        self.wait_for_response_to_continue_where_we_left_off = False
+        self.waiting_for_response_to_continue_where_we_left_off = False
         if continue_where_we_left_off == "true":
             await self._resume_story()
         else:
@@ -1531,7 +1544,7 @@ class MagicTalesCoreOrchestrator:
         # Define paths for story and image storage based on user-specific directories
 
         # Get the environment variables
-        static_folder = os.environ.get("STATIC_FOLDER")        
+        static_folder = os.environ.get("STATIC_FOLDER")
 
         stories_root_dir = os.path.join(
             static_folder,
@@ -1549,7 +1562,7 @@ class MagicTalesCoreOrchestrator:
         # Create the story using the StoryManager class
         try:
             await self.story_manager.create_story(
-                    profile_id=profile_id,
+                profile_id=profile_id,
                 ws_session_uid=self.websocket.uid,  # Websocket session UID associated with the story. (self.session.identity_key returns a reference to the method, not a valid attribute)
                 title=title,
                 features=features,
@@ -1772,18 +1785,45 @@ class MagicTalesCoreOrchestrator:
         self.image_prompt_generation_mechanism = ImagePromptGenerationMechanism(
             config=self.config
         )
+
+        # Generate cover image prompt
+        cover_prompt = await self._generate_cover_image_prompt()
+
+        # Generate chapter image prompts
         all_chapter_prompts_and_new_chapters_annotated = (
             await self._generate_image_prompts_for_all_chapters(
                 chapters=self.story_manager.in_mem_story_data.chapters
             )
         )
-        await self._extract_post_processed_chapters(
-            all_chapter_prompts_and_new_chapters_annotated
-        )
-        logger.info(
-            f"Image Prompts + processed chapters created"
-        )  # {self.story_manager.in_mem_story_data.image_prompts}")
 
+        # Combine cover and chapter prompts
+        all_chapter_prompts_and_new_chapters_annotated_plus_cover_prompt = {
+            **cover_prompt,
+            **all_chapter_prompts_and_new_chapters_annotated,
+        }
+
+        await self._extract_post_processed_chapters(
+            all_chapter_prompts_and_new_chapters_annotated_plus_cover_prompt
+        )
+        logger.info(f"Image Prompts + processed chapters created")
+
+    async def _generate_cover_image_prompt(self) -> Dict[int, Dict[str, Any]]:
+        """Generate a single image prompt for the story cover."""
+        logger.info("Generating image prompt for the story cover.")
+        try:
+            await self.story_manager.refresh()
+            synopsis = self.story_manager.story.synopsis
+            cover_prompt_data = self.image_prompt_generation_mechanism._generate_image_prompts_per_chapter(0, synopsis, is_cover=True)
+
+            if cover_prompt_data.get("image_prompt_generator_success"):
+                return {-1: {"title": "Cover", "image_prompt_data": cover_prompt_data}}
+            else:
+                logger.warning("Failed to generate image prompt for the cover. Skipping.")
+                return {}
+        except Exception as e:
+            logger.exception(f"Exception while generating image prompt for the cover: {e}")
+            return {}
+        
     async def _extract_post_processed_chapters(
         self, all_image_prompts: Dict[int, Dict[str, Any]]
     ) -> None:
@@ -1801,20 +1841,26 @@ class MagicTalesCoreOrchestrator:
         image_prompts = []
 
         for chapter_number, chapter_data in all_image_prompts.items():
-            chapter_title = chapter_data.get("title", f"Chapter {chapter_number + 1}")
+            chapter_title = chapter_data.get(
+                "title",
+                "Cover" if chapter_number == -1 else f"Chapter {chapter_number + 1}"                
+            )
             chapter_content = chapter_data["image_prompt_data"][
                 "image_prompt_response_content_dict"
             ]["annotated_chapter"]
+
             image_prompt = chapter_data["image_prompt_data"][
                 "image_prompt_response_content_dict"
             ]["image_prompts"]
+
             prompt_messages = chapter_data["image_prompt_data"][
                 "image_prompt_generator_prompt_messages"
             ]
 
-            post_processed_chapters.append(
-                {"title": chapter_title, "content": chapter_content}
-            )
+            if chapter_number >= 0:
+                post_processed_chapters.append(
+                    {"title": chapter_title, "content": chapter_content}
+                )
 
             image_prompts.append(image_prompt)
             image_prompt_messages.append(
@@ -1874,14 +1920,19 @@ class MagicTalesCoreOrchestrator:
         # Flatten list of lists and keep track of chapter numbers
         flat_image_prompts = [
             (chapter_number, image_prompt, image_prompt_index)
-            for chapter_number, chapter_prompts in enumerate(all_image_prompts, 1)
+            for chapter_number, chapter_prompts in enumerate(all_image_prompts, 0)
             for image_prompt_index, image_prompt in enumerate(chapter_prompts)
         ]
 
         image_generation_count = 0
         for chapter_number, image_prompt, image_prompt_index in flat_image_prompts:
-            filename = f"Chapter_{chapter_number}_Image_{image_prompt_index}.png"
-            message = f"Update the user in just a few words that we are Generating Chapter {chapter_number}, illustration {image_prompt_index+1}"
+            if chapter_number == 0 and image_prompt_index == 0:
+                filename = "cover.png"
+                message = "Update the user in just a few words that we are generating the Cover illustration for the story"
+            else:
+                filename = f"Chapter_{chapter_number}_Image_{image_prompt_index}.png"
+                message = f"Update the user in just a few words that we are generating chapter {chapter_number}, illustration {image_prompt_index+1}"
+
             logger.info(message)
             await self._generate_system_request_to_update_user(message)
 
@@ -1897,8 +1948,8 @@ class MagicTalesCoreOrchestrator:
                     )
                     image_filenames.append(filename)
                 else:
-                    message = f"Failed to generate image for Chapter {chapter_number}, Image {image_prompt_index}. Skipping."
-                    logger.error(message)
+                    error_message = f"Failed to generate image for {'Cover' if chapter_number == 0 and image_prompt_index == 0 else f'Chapter {chapter_number}, Image {image_prompt_index}'}. Skipping."
+                    logger.error(error_message)
 
                 await self.create_and_send_progress_update(
                     story_state=str(StoryState.IMAGE_GENERATION),
@@ -1909,8 +1960,8 @@ class MagicTalesCoreOrchestrator:
                 )
 
             except Exception as e:
-                message = f"An error occurred while processing Chapter {chapter_number}, Image {image_prompt_index}."
-                logger.error(f"{message}. Details:\n{traceback.format_exc()}")
+                error_message = f"An error occurred while processing Chapter {chapter_number}, Image {image_prompt_index}."
+                logger.error(f"{error_message}. Details:\n{traceback.format_exc()}")
                 continue
 
         logger.info(f"Successfully generated image files: {image_filenames}")
@@ -1983,8 +2034,8 @@ class MagicTalesCoreOrchestrator:
             logger.info(f"Story document saved in: {final_pdf_file_path}")
             message = "In a few words, let the user know that we have finished and that the entire team at Magic-Tales.ai hope they enjoy this story!"
             await self._generate_system_request_to_update_user(message)
-            
-            react_api_url = os.environ.get('REACT_APP_API_URL')
+
+            react_api_url = os.environ.get("REACT_APP_API_URL")
             url = f"{react_api_url}story/{self.story_manager.story.id}/download"
             logging.info(f"Story to download sent to frontend: {url}")
             await self.create_and_send_progress_update(

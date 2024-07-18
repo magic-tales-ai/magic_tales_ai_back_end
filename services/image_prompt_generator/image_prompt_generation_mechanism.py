@@ -54,15 +54,36 @@ class ImagePromptGenerationMechanism:
             prompt_constructor=prompt_constructor,
         )
 
+    def _generate_single_image_prompt(self, prompt: str) -> Dict[str, Any]:
+        """Generate a single image prompt."""
+        try:
+            image_prompt_responses, image_prompt_generator_prompt_messages = self.image_prompt_generator.generate_single_image_prompt(prompt)
+            image_prompt_generator_success, image_prompt_response = image_prompt_responses[0]
+
+            if not image_prompt_generator_success:
+                raise RuntimeError("No image prompt response generated")
+
+            return {
+                "image_prompt_generator_success": True,
+                "image_prompt_generator_prompt_messages": image_prompt_generator_prompt_messages,
+                "image_prompt_response_content_dict": {
+                    "annotated_chapter": prompt,  # We use the original prompt as there's no chapter to annotate
+                    "image_prompts": [image_prompt_response]  # Wrap in a list to maintain consistency with chapter prompts
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to create image prompt for the cover. Error: {e}", exc_info=True)
+            return {"image_prompt_generator_success": False}
+    
     def _generate_image_prompts_per_chapter(
-        self, chapter_number: int, chapter_content: str
-    ) -> Dict[str, Any]:
+        self, chapter_number: int, chapter_content: str, is_cover: bool = False
+    ) -> Dict[str, Any]:        
         """
         Generates image prompts for a given chapter content and annotates the chapter with image tags.
         """
-        logger.info(
-            "Generating chapter image prompts and placing image annotations inside the chapter."
-        )
+        log_message = "Generating cover image prompt." if is_cover else "Generating chapter image prompts and placing image annotations inside the chapter."
+        logger.info(log_message)
+        
 
         for attempt in range(1, self.config.main_llm.max_retries + 1):
             try:
@@ -70,7 +91,7 @@ class ImagePromptGenerationMechanism:
                     image_prompt_responses,
                     image_prompt_generator_prompt_messages,
                 ) = self.image_prompt_generator.generate_image_prompts(
-                    chapter_number, chapter_content
+                    chapter_number, chapter_content,is_cover
                 )
                 (
                     image_prompt_generator_success,
@@ -99,21 +120,20 @@ class ImagePromptGenerationMechanism:
         )
 
         self._check_visualize_image_prompt_generator_response(
-            image_prompt_generator_response_dict
+            image_prompt_generator_response_dict, is_cover
         )
 
         return image_prompt_generator_response_dict
 
     def _check_visualize_image_prompt_generator_response(
-        self, image_prompt_generator_response_dict: Dict[str, str]
+        self, image_prompt_generator_response_dict: Dict[str, str], is_cover: bool
     ) -> None:
         """
         Checks the configuration and visualizes the response from the image prompt generator.
 
-        This method prints the response associated with a image prompt generator.
-        The output is controlled by the `visualize_image_prompt_generator_response` configuration option.
-
-        :param image_prompt_generator_response_dict: A dictionary containing information about the image prompt generator response.
+        Args:
+            image_prompt_generator_response_dict (Dict[str, str]): A dictionary containing information about the image prompt generator response.
+            is_cover (bool): Whether this is for the cover image.
         """
         if (
             self.config.output_artifacts.visualize_image_prompt_generator_response
@@ -128,7 +148,7 @@ class ImagePromptGenerationMechanism:
                 "image_prompt_response_content_dict"
             ]["image_prompts"]
 
-            print(f"\033[34mChapter:\033[0m")
+            print(f"\033[34m{'Cover' if is_cover else 'Chapter'}:\033[0m")
             print(f"\033[34m{chapter_content}\033[0m")
             print(f"\033[34mImage Prompts:\033[0m")
             print(f"\033[34m{image_prompts}\033[0m")

@@ -1,7 +1,7 @@
 import logging
 from abc import ABC
 from types import ModuleType
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 from langchain_community.callbacks import get_openai_callback
 from langchain_community.callbacks.openai_info import OpenAICallbackHandler
@@ -64,8 +64,8 @@ class ImagePromptGeneratorLLM(ABC):
         self.successful_requests += cb.successful_requests
 
     def generate_image_prompts(
-        self, chapter_number, chapter_content: str
-    ) -> Tuple[List[Tuple[bool, Dict[str, str]]], List[BaseMessage]]:
+        self, chapter_number: int, chapter_content: str, is_cover: bool = False
+    ) -> Tuple[List[Tuple[bool, Dict[str, Any]]], List[Any]]:        
         """
         Generates output from the LLM.
 
@@ -76,15 +76,14 @@ class ImagePromptGeneratorLLM(ABC):
             Tuple[List[Tuple[bool, Dict[str, str]]], List[BaseMessage]]: A tuple of outputs and messages.
             Output artifacts is a list of tuples, each containing a status boolean and an output dict.
             Messages is a list of prompts that were constructed to generate output.
-        """
+        """        
         # Prepare prompts and parser
         (
             system_message,
             output_parser,
         ) = self.prompt_constructor.compose_system_message_and_create_output_parser()
-        human_message = self.prompt_constructor.compose_message_for_LLM(
-            chapter_number, chapter_content
-        )
+
+        human_message = self.prompt_constructor.compose_message_for_LLM(chapter_number, chapter_content, is_cover)
         messages = [system_message, human_message]
 
         # Generate output

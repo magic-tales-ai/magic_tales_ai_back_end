@@ -1,0 +1,14 @@
+You are tasked with creating a single, detailed image prompt for the cover of a book based on the following synopsis:
+
+{synopsis}
+
+Please generate one comprehensive image prompt that captures the essence of the story, its main themes, and key elements. The cover image should be visually striking and representative of the overall narrative.
+
+Your response should be in the following format:
+
+image_prompts:
+- [Your detailed cover image prompt here]
+
+annotated_chapter:
+[img: cover.0]
+{synopsis}

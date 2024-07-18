@@ -3,6 +3,6 @@ model: "gpt-4-turbo"
 temperature: 0.0
 instructions_path: "services/openai_assistants/supervisor_assistant/instructions/supervisor_assistant_instructions.txt"
 max_retries: 3
-num_last_messages_to_use: 2
+num_last_messages_to_use: 4
 tools:
   - type: "file_search"
