@@ -101,6 +101,13 @@ python3 ...
 ```
 - Interact with the front-end elements.
 
+## Running Magic-Tales ON THE SERVER
+- Front End:
+  - cd magic_tales_front_end
+  - npm npm run build
+- service magictales_ai restart
+- service magictales_api restart
+
 ### Notes
 - **Run the service on localhost and por 8001, so the front end can connect to it**
 

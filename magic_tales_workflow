@@ -1,0 +1,22 @@
+// MagicTales.ai Story Generation Workflow
+digraph {
+	Start [label=Start]
+	Data_Extraction [label="Data Extraction"]
+	Story_Generation [label="Story Generation"]
+	Image_Prompt_Generation [label="Image Prompt Generation"]
+	Image_Generation [label="Image Generation"]
+	Document_Generation [label="Document Generation"]
+	Error [label=Error]
+	End [label=End]
+	Start -> Data_Extraction [label="User logs in"]
+	Data_Extraction -> Story_Generation [label="(Profile, Story Features, Synopsis)"]
+	Story_Generation -> Image_Prompt_Generation [label="(Story Chapters)"]
+	Story_Generation -> Error [label=""]
+	Image_Prompt_Generation -> Image_Generation [label="(Image Prompts)"]
+	Image_Prompt_Generation -> Error [label=""]
+	Image_Generation -> Document_Generation [label="(Images)"]
+	Image_Generation -> Error [label=""]
+	Document_Generation -> End [label="(PDF)"]
+	Document_Generation -> Error [label=""]
+	Error -> Data_Extraction [label="(Re-Login)"]
+}
