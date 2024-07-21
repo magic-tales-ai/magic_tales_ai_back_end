@@ -87,7 +87,7 @@ def ucb_score(
             value_score = 0.0
 
     except Exception as e:
-        print(f"Error calculating UCB score for child {child}: {e}")
+        logger.info(f"Error calculating UCB score for child {child}: {e}")
         prior_score = 0.0
         value_score = 0.0
 

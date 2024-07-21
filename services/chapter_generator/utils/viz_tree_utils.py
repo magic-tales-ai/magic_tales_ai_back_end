@@ -120,7 +120,7 @@ def build_graph_viz(path_to_root_node_folder: str = None) -> bool:
             if chapter_creation_folders:
                 path_to_root_node_folder = chapter_creation_folders[0]
             else:
-                print("No chapter creation folders found.")
+                logger.info("No chapter creation folders found.")
                 return False
 
         root_node_file = os.path.join(path_to_root_node_folder, MCTS_TREE_FILE)
@@ -136,11 +136,11 @@ def build_graph_viz(path_to_root_node_folder: str = None) -> bool:
             dot.format = "png"
             dot.render(filename=output_file, view=False, cleanup=True)
         else:
-            print(f"Previous chapter creation file not found: {root_node_file}")
+            logger.info(f"Previous chapter creation file not found: {root_node_file}")
 
     except Exception as e:
         tb = traceback.format_exc()
-        print(f"Could NOT load & visualize {root_node_file}.\nException: {e}\n{tb}")
+        logger.info(f"Could NOT load & visualize {root_node_file}.\nException: {e}\n{tb}")
         return False
 
 
@@ -159,7 +159,7 @@ def animate_mcts_evolution(path_to_root_node_folder: str = None) -> bool:
             if chapter_creation_folders:
                 path_to_root_node_folder = chapter_creation_folders[0]
             else:
-                print("No chapter creation folders found.")
+                logger.info("No chapter creation folders found.")
                 return False
 
         path_to_root_node_folder = os.path.join(
@@ -206,7 +206,7 @@ def animate_mcts_evolution(path_to_root_node_folder: str = None) -> bool:
 
             except Exception as e:
                 tb = traceback.format_exc()
-                print(f"Could NOT load tree file {file}.\nException: {e}\n{tb}")
+                logger.info(f"Could NOT load tree file {file}.\nException: {e}\n{tb}")
 
         # Pad the images to the maximum dimensions
         padded_images = []
@@ -226,7 +226,7 @@ def animate_mcts_evolution(path_to_root_node_folder: str = None) -> bool:
 
     except Exception as e:
         tb = traceback.format_exc()
-        print(f"Could NOT load & visualize the tree evolution.\nException: {e}\n{tb}")
+        logger.info(f"Could NOT load & visualize the tree evolution.\nException: {e}\n{tb}")
         return False
 
 

@@ -38,5 +38,5 @@ for start, end, label in transitions:
     dot.edge(start, end, label=label)
 
 # Generate and save the diagram
-print(dot.source)  # Print the DOT language code (optional)
+logger.info(dot.source)  # Print the DOT language code (optional)
 dot.render('magic_tales_workflow', format='png')  # Render as PNG image

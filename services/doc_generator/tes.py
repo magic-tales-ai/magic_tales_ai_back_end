@@ -12,4 +12,4 @@ def convert_path_to_url(local_path):
 # Example usage
 local_path = "/media/neoadmin/Treasure/NC-laptop/personal/00-MAGIC-TALES/magit_tales_pro/static/stories/user_58/20240423-214742/story.pdf"
 url = convert_path_to_url(local_path)
-print(url)
+logger.info(url)

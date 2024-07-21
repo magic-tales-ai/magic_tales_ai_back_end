@@ -212,7 +212,7 @@ class StoryManager:
                 "Critical refresh error: Story or Profile is still not loaded correctly after refresh."
             )
 
-    async def get_story_blueprint(self) -> Dict[str, str]:
+    async def get_story_bluelogger_info(self) -> Dict[str, str]:
         """
         Retrieves the initial data necessary for generating a new story. This method extracts
         essential elements such as title, features, and synopsis from the loaded story and

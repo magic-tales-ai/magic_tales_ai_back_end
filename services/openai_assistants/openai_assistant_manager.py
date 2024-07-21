@@ -39,25 +39,25 @@ class OpenAIAssistantManager:
             return response.data
 
     def format_assistants_list(self, assistants_response):
-        print("OpenAI Assistants Overview:\n")
+        logger.info("OpenAI Assistants Overview:\n")
         for assistant in assistants_response:
-            print(f"Name: {assistant.name}")
-            print(f"ID: {assistant.id}")
-            print(f"Model: {assistant.model}")
+            logger.info(f"Name: {assistant.name}")
+            logger.info(f"ID: {assistant.id}")
+            logger.info(f"Model: {assistant.model}")
             if assistant.description:
-                print(f"Description: {assistant.description}")
+                logger.info(f"Description: {assistant.description}")
             if assistant.instructions:
-                print("Instructions:")
+                logger.info("Instructions:")
                 # Assuming instructions might contain newlines for better formatting
-                print(assistant.instructions.replace("\\n", "\n"))
+                logger.info(assistant.instructions.replace("\\n", "\n"))
             if assistant.file_ids:
-                print("Attached File IDs:")
+                logger.info("Attached File IDs:")
                 for file_id in assistant.file_ids:
-                    print(f" - {file_id}")
-            print("Tools:")
+                    logger.info(f" - {file_id}")
+            logger.info("Tools:")
             for tool in assistant.tools:
-                print(f" - Type: {tool.type}")
-            print("\n-------------------\n")
+                logger.info(f" - Type: {tool.type}")
+            logger.info("\n-------------------\n")
 
     async def list_all_files_for_assistant(self, assistant_id: str) -> List[str]:
         """Lists all files for a given assistant."""
@@ -85,7 +85,7 @@ class OpenAIAssistantManager:
             )
             await self.delete_files_for_assistant(assistant_id, file_ids)
             await self.delete_assistant(assistant_id)
-        print("All assistants and their files have been deleted.")
+        logger.info("All assistants and their files have been deleted.")
 
 
 if __name__ == "__main__":
