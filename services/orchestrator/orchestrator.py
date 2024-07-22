@@ -1621,14 +1621,14 @@ class MagicTalesCoreOrchestrator:
             )
 
             await self.story_manager.refresh(raise_error=True)
-            story_blueprint = await self.story_manager.get_story_bluelogger_info()
+            story_blueprint = await self.story_manager.get_story_blueprint()
 
         except Exception as e:
             logger.error(f"Failed to initialize story generation: {e}")
             if self.latest_story and self.latest_story.id:
                 try:
                     await self.story_manager.load_story(self.latest_story.id)
-                    story_blueprint = await self.story_manager.get_story_bluelogger_info()
+                    story_blueprint = await self.story_manager.get_story_blueprint()
                 except Exception as load_error:
                     logger.error(f"Failed to load the latest story: {load_error}")
                     raise RuntimeError(
