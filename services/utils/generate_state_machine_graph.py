@@ -1,4 +1,9 @@
 from graphviz import Digraph
+from services.utils.log_utils import get_logger
+
+# Get a logger instance for this module
+logger = get_logger(__name__)
+
 
 dot = Digraph(comment='MagicTales.ai Story Generation Workflow')
 

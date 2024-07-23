@@ -2,6 +2,7 @@ import math
 from typing import Dict
 
 from services.chapter_generator.utils.chapter_node import ChapterNode
+
 from services.utils.log_utils import get_logger
 
 # Get a logger instance for this module

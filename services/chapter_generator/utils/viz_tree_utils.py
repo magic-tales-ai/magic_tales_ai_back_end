@@ -10,6 +10,12 @@ import re
 
 from services.chapter_generator.utils.chapter_node import ChapterNode
 
+from services.utils.log_utils import get_logger
+
+# Get a logger instance for this module
+logger = get_logger(__name__)
+
+
 DEFAULT_ROOT_NODE_FOLDER = "./stories/*_chapter_creation_data_*"
 MCTS_TREE_FILE = "mcts_state.dill"
 TREE_EVOLUTION_FOLDER = "tree_evolution"

@@ -11,6 +11,11 @@ from openai.types.beta.threads import Message, MessageDelta
 from openai.types.beta.threads.runs import ToolCall, RunStep
 from openai.types.beta import AssistantStreamEvent
 
+from services.utils.log_utils import get_logger
+
+# Get a logger instance for this module
+logger = get_logger(__name__)
+
 
 class EventHandler(AssistantEventHandler):
     def __init__(self, thread_id, assistant_id):
