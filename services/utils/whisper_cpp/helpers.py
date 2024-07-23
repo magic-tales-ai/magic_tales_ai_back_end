@@ -22,7 +22,7 @@ def transcribe(whisper, params, ctx, audio_segment: AudioSegment) -> Tuple[str, 
         len(normalized),
     )
     if result != 0:
-        print("Error: {}".format(result))
+        logger.info("Error: {}".format(result))
         exit(1)
     text: str = whisper.whisper_full_get_segment_text(ctypes.c_void_p(ctx), 0).decode(
         "utf-8"

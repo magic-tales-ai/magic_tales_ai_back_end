@@ -95,12 +95,12 @@ from magic_tales_models.models.ws_input import WSInput
 from magic_tales_models.models.ws_output import WSOutput
 
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+from services.utils.log_utils import get_logger
+
 # Get a logger instance for this module
 logger = get_logger(__name__)
 
-
+# TODO: do not overwrite the value of the environment variable if it exists
 os.environ["NUMEXPR_MAX_THREADS"] = "16"  # Set to the number of cores you wish to use
 
 
@@ -366,8 +366,8 @@ class MagicTalesCoreOrchestrator:
 
     async def handle_command_new_tale(self, frontend_request: WSInput):
         if await self.last_story_finished_correctly(self.user_id):
-            asyncio.create_task(self._handle_new_tale())        
-            
+            asyncio.create_task(self._handle_new_tale())
+
 
     async def handle_command_spin_off(self, frontend_request: WSInput):
         if not frontend_request.story_id:
@@ -530,7 +530,7 @@ class MagicTalesCoreOrchestrator:
                 # Process to resume the story
                 await self._generate_system_request_to_update_user(
                     self.config.updates_request_prompts.incomplete_story_found
-                )                
+                )
                 return False
         else:
             # Log that no story is available; await user action to start new.
@@ -1823,7 +1823,7 @@ class MagicTalesCoreOrchestrator:
         except Exception as e:
             logger.exception(f"Exception while generating image prompt for the cover: {e}")
             return {}
-        
+
     async def _extract_post_processed_chapters(
         self, all_image_prompts: Dict[int, Dict[str, Any]]
     ) -> None:
@@ -1843,7 +1843,7 @@ class MagicTalesCoreOrchestrator:
         for chapter_number, chapter_data in all_image_prompts.items():
             chapter_title = chapter_data.get(
                 "title",
-                "Cover" if chapter_number == -1 else f"Chapter {chapter_number + 1}"                
+                "Cover" if chapter_number == -1 else f"Chapter {chapter_number + 1}"
             )
             chapter_content = chapter_data["image_prompt_data"][
                 "image_prompt_response_content_dict"

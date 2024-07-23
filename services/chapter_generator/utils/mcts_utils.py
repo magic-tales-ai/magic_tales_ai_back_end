@@ -2,6 +2,7 @@ import math
 from typing import Dict
 
 from services.chapter_generator.utils.chapter_node import ChapterNode
+
 from services.utils.log_utils import get_logger
 
 # Get a logger instance for this module
@@ -87,7 +88,7 @@ def ucb_score(
             value_score = 0.0
 
     except Exception as e:
-        print(f"Error calculating UCB score for child {child}: {e}")
+        logger.info(f"Error calculating UCB score for child {child}: {e}")
         prior_score = 0.0
         value_score = 0.0
 

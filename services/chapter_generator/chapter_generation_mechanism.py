@@ -464,15 +464,15 @@ class ChapterGenerationMechanism:
             chapter_content = chapter_info_dict["chapter_generator_response_dict"][
                 "content"
             ]
-            print(f"\033[34mChapter:\033[0m")
-            # print(f"\033[34m  Rationale:\033[0m")
-            # print(f"\033[34m{rationale}\033[0m")
-            print(f"\033[34m  Plan:\033[0m")
-            print(f"\033[34m{plan}\033[0m")
-            # print(f"\033[34m  Synopsis:\033[0m")
-            # print(f"\033[34m{synopsis}\033[0m")
-            print(f"\033[34m  content:\033[0m")
-            print(f"\033[34m{chapter_content}\033[0m")
+            logger.info(f"\033[34mChapter:\033[0m")
+            # logger.info(f"\033[34m  Rationale:\033[0m")
+            # logger.info(f"\033[34m{rationale}\033[0m")
+            logger.info(f"\033[34m  Plan:\033[0m")
+            logger.info(f"\033[34m{plan}\033[0m")
+            # logger.info(f"\033[34m  Synopsis:\033[0m")
+            # logger.info(f"\033[34m{synopsis}\033[0m")
+            logger.info(f"\033[34m  content:\033[0m")
+            logger.info(f"\033[34m{chapter_content}\033[0m")
 
     def _generate_critique(
         self, chapter_info_dict: Dict[str, Any]
@@ -534,18 +534,18 @@ class ChapterGenerationMechanism:
             and chapter_info_dict.get("chapter_critic_success", False)
         ):
             full_ctirique = chapter_info_dict.get("chapter_critic_response_dict")
-            print(f"\033[34mFull Critique:\033[0m")
-            print(f"\033[34m{full_ctirique}\033[0m")
+            logger.info(f"\033[34mFull Critique:\033[0m")
+            logger.info(f"\033[34m{full_ctirique}\033[0m")
             # critique = chapter_info_dict["chapter_critic_response_dict"]["critique"]
             # rationale = chapter_info_dict["chapter_critic_response_dict"]["rationale"]
             # # score = chapter_info_dict["chapter_critic_response_dict"]["score_by_llm"]
-            # print(f"\033[34mchapter:\033[0m")
-            # print(f"\033[34m  Critique:\033[0m")
-            # print(f"\033[34m{critique}\033[0m")
-            # print(f"\033[34m  Rationale:\033[0m")
-            # print(f"\033[34m{rationale}\033[0m")
-            # # print(f"\033[34m  Score:\033[0m")
-            # # print(f"\033[34m{score}\033[0m")
+            # logger.info(f"\033[34mchapter:\033[0m")
+            # logger.info(f"\033[34m  Critique:\033[0m")
+            # logger.info(f"\033[34m{critique}\033[0m")
+            # logger.info(f"\033[34m  Rationale:\033[0m")
+            # logger.info(f"\033[34m{rationale}\033[0m")
+            # # logger.info(f"\033[34m  Score:\033[0m")
+            # # logger.info(f"\033[34m{score}\033[0m")
 
     def get_value_from_dict(
         self,

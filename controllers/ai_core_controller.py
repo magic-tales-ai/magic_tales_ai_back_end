@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import traceback
 
@@ -11,7 +12,14 @@ from services.message_sender import MessageSender
 from services.session_service import check_token
 
 from magic_tales_models.models.ws_input import WSInput
+from services.utils.log_utils import get_logger
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+# Get a logger instance for this module
+logger = get_logger(__name__)
+
+# TODO: change /bot route to /ai
 ai_core_router = APIRouter(prefix="/bot", tags=["Bot"])
 
 
@@ -52,9 +60,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     request = WSInput(**data)
 
                     # Validate token
-                    token_data = await check_token(request.token)
-                    if not token_data:
-                        raise Exception("Invalid token.")
+                    if not request.token:
+                        await websocket.send_json({"error": "Token is required."})
+                        continue
+                    try:
+                        token_data = await check_token(request.token)
+                    except:
+                    #if not token_data:
+                        await websocket.send_json({"error": "Invalid token."})
+                        continue
 
                     # Validate command is not empty
                     if not request.command:
@@ -65,7 +79,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await orchestrator.process_frontend_request(request, token_data)
 
                 except WebSocketDisconnect:
-                    print("WebSocket disconnected by the server")
+                    logger.info("WebSocket disconnected by the server")
                     orchestrator._cancel_token_refresh_task()
                     orchestrator = None
                     message_sender = None
@@ -74,7 +88,7 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as ex:
             # await websocket.send_json({"error": str(ex)})
             # await websocket.close()
-            print(f"WebSocket connection error: {ex}/n/n{traceback.format_exc()}")
+            logger.info(f"WebSocket connection error", exc_info=True) #: {ex}/n/n{traceback.format_exc()}")
             # break  # Exit the loop to end the session context manager
         finally:
             if websocket.client_state.name != "DISCONNECTED":

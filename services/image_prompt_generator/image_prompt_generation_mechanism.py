@@ -74,16 +74,16 @@ class ImagePromptGenerationMechanism:
         except Exception as e:
             logger.error(f"Failed to create image prompt for the cover. Error: {e}", exc_info=True)
             return {"image_prompt_generator_success": False}
-    
+
     def _generate_image_prompts_per_chapter(
         self, chapter_number: int, chapter_content: str, is_cover: bool = False
-    ) -> Dict[str, Any]:        
+    ) -> Dict[str, Any]:
         """
         Generates image prompts for a given chapter content and annotates the chapter with image tags.
         """
         log_message = "Generating cover image prompt." if is_cover else "Generating chapter image prompts and placing image annotations inside the chapter."
         logger.info(log_message)
-        
+
 
         for attempt in range(1, self.config.main_llm.max_retries + 1):
             try:
@@ -148,7 +148,7 @@ class ImagePromptGenerationMechanism:
                 "image_prompt_response_content_dict"
             ]["image_prompts"]
 
-            print(f"\033[34m{'Cover' if is_cover else 'Chapter'}:\033[0m")
-            print(f"\033[34m{chapter_content}\033[0m")
-            print(f"\033[34mImage Prompts:\033[0m")
-            print(f"\033[34m{image_prompts}\033[0m")
+            logger.info(f"\033[34m{'Cover' if is_cover else 'Chapter'}:\033[0m")
+            logger.info(f"\033[34m{chapter_content}\033[0m")
+            logger.info(f"\033[34mImage Prompts:\033[0m")
+            logger.info(f"\033[34m{image_prompts}\033[0m")

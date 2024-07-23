@@ -1,4 +1,9 @@
 from graphviz import Digraph
+from services.utils.log_utils import get_logger
+
+# Get a logger instance for this module
+logger = get_logger(__name__)
+
 
 dot = Digraph(comment='MagicTales.ai Story Generation Workflow')
 
@@ -38,5 +43,5 @@ for start, end, label in transitions:
     dot.edge(start, end, label=label)
 
 # Generate and save the diagram
-print(dot.source)  # Print the DOT language code (optional)
+logger.info(dot.source)  # Print the DOT language code (optional)
 dot.render('magic_tales_workflow', format='png')  # Render as PNG image

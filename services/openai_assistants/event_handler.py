@@ -11,6 +11,11 @@ from openai.types.beta.threads import Message, MessageDelta
 from openai.types.beta.threads.runs import ToolCall, RunStep
 from openai.types.beta import AssistantStreamEvent
 
+from services.utils.log_utils import get_logger
+
+# Get a logger instance for this module
+logger = get_logger(__name__)
+
 
 class EventHandler(AssistantEventHandler):
     def __init__(self, thread_id, assistant_id):
@@ -26,47 +31,47 @@ class EventHandler(AssistantEventHandler):
 
     @override
     def on_text_created(self, text) -> None:
-        print(f"\nassistant on_text_created > ", end="", flush=True)
+        logger.info(f"\nassistant on_text_created > ", end="", flush=True)
 
     @override
     def on_text_delta(self, delta, snapshot):
-        # print(f"\nassistant on_text_delta > {delta.value}", end="", flush=True)
-        print(f"{delta.value}")
+        # logger.info(f"\nassistant on_text_delta > {delta.value}", end="", flush=True)
+        logger.info(f"{delta.value}")
 
     @override
     def on_end(
         self,
     ):
-        print(
+        logger.info(
             f"\n end assistant > ", self.current_run_step_snapshot, end="", flush=True
         )
 
     @override
     def on_exception(self, exception: Exception) -> None:
         """Fired whenever an exception happens during streaming"""
-        print(f"\nassistant > {exception}\n", end="", flush=True)
+        logger.info(f"\nassistant > {exception}\n", end="", flush=True)
 
     @override
     def on_message_created(self, message: Message) -> None:
-        print(f"\nassistant on_message_created > {message}\n", end="", flush=True)
+        logger.info(f"\nassistant on_message_created > {message}\n", end="", flush=True)
 
     @override
     def on_message_done(self, message: Message) -> None:
-        print(f"\nassistant on_message_done > {message}\n", end="", flush=True)
+        logger.info(f"\nassistant on_message_done > {message}\n", end="", flush=True)
 
     @override
     def on_message_delta(self, delta: MessageDelta, snapshot: Message) -> None:
-        # print(f"\nassistant on_message_delta > {delta}\n", end="", flush=True)
+        # logger.info(f"\nassistant on_message_delta > {delta}\n", end="", flush=True)
         pass
 
     def on_tool_call_created(self, tool_call):
         # 4
-        print(f"\nassistant on_tool_call_created > {tool_call}")
+        logger.info(f"\nassistant on_tool_call_created > {tool_call}")
         self.function_name = tool_call.function.name
         self.tool_id = tool_call.id
-        print(f"\on_tool_call_created > run_step.status > {self.run_step.status}")
+        logger.info(f"\on_tool_call_created > run_step.status > {self.run_step.status}")
 
-        print(f"\nassistant > {tool_call.type} {self.function_name}\n", flush=True)
+        logger.info(f"\nassistant > {tool_call.type} {self.function_name}\n", flush=True)
 
         keep_retrieving_run = openai_client.beta.threads.runs.retrieve(
             thread_id=self.thread_id, run_id=self.run_id
@@ -77,7 +82,7 @@ class EventHandler(AssistantEventHandler):
                 thread_id=self.thread_id, run_id=self.run_id
             )
 
-            print(f"\nSTATUS: {keep_retrieving_run.status}")
+            logger.info(f"\nSTATUS: {keep_retrieving_run.status}")
 
     @override
     def on_tool_call_done(self, tool_call: ToolCall) -> None:
@@ -85,18 +90,18 @@ class EventHandler(AssistantEventHandler):
             thread_id=self.thread_id, run_id=self.run_id
         )
 
-        print(f"\nDONE STATUS: {keep_retrieving_run.status}")
+        logger.info(f"\nDONE STATUS: {keep_retrieving_run.status}")
 
         if keep_retrieving_run.status == "completed":
             all_messages = openai_client.beta.threads.messages.list(
                 thread_id=current_thread.id
             )
 
-            print(all_messages.data[0].content[0].text.value, "", "")
+            logger.info(all_messages.data[0].content[0].text.value, "", "")
             return
 
         elif keep_retrieving_run.status == "requires_action":
-            print("here you would call your function")
+            logger.info("here you would call your function")
 
             if self.function_name == "example_blog_post_function":
                 function_data = my_example_funtion()
@@ -116,44 +121,44 @@ class EventHandler(AssistantEventHandler):
                 ) as stream:
                     stream.until_done()
             else:
-                print("unknown function")
+                logger.info("unknown function")
                 return
 
     @override
     def on_run_step_created(self, run_step: RunStep) -> None:
         # 2
-        print(f"on_run_step_created")
+        logger.info(f"on_run_step_created")
         self.run_id = run_step.run_id
         self.run_step = run_step
-        print("The type ofrun_step run step is ", type(run_step), flush=True)
-        print(f"\n run step created assistant > {run_step}\n", flush=True)
+        logger.info("The type ofrun_step run step is ", type(run_step), flush=True)
+        logger.info(f"\n run step created assistant > {run_step}\n", flush=True)
 
     @override
     def on_run_step_done(self, run_step: RunStep) -> None:
-        print(f"\n run step done assistant > {run_step}\n", flush=True)
+        logger.info(f"\n run step done assistant > {run_step}\n", flush=True)
 
     def on_tool_call_delta(self, delta, snapshot):
         if delta.type == "function":
             # the arguments stream thorugh here and then you get the requires action event
-            print(delta.function.arguments, end="", flush=True)
+            logger.info(delta.function.arguments, end="", flush=True)
             self.arguments += delta.function.arguments
         elif delta.type == "code_interpreter":
-            print(f"on_tool_call_delta > code_interpreter")
+            logger.info(f"on_tool_call_delta > code_interpreter")
             if delta.code_interpreter.input:
-                print(delta.code_interpreter.input, end="", flush=True)
+                logger.info(delta.code_interpreter.input, end="", flush=True)
             if delta.code_interpreter.outputs:
-                print(f"\n\noutput >", flush=True)
+                logger.info(f"\n\noutput >", flush=True)
                 for output in delta.code_interpreter.outputs:
                     if output.type == "logs":
-                        print(f"\n{output.logs}", flush=True)
+                        logger.info(f"\n{output.logs}", flush=True)
         else:
-            print("ELSE")
-            print(delta, end="", flush=True)
+            logger.info("ELSE")
+            logger.info(delta, end="", flush=True)
 
     @override
     def on_event(self, event: AssistantStreamEvent) -> None:
-        # print("In on_event of event is ", event.event, flush=True)
+        # logger.info("In on_event of event is ", event.event, flush=True)
 
         if event.event == "thread.run.requires_action":
-            print("\nthread.run.requires_action > submit tool call")
-            print(f"ARGS: {self.arguments}")
+            logger.info("\nthread.run.requires_action > submit tool call")
+            logger.info(f"ARGS: {self.arguments}")
