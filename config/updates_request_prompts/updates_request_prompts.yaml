@@ -102,7 +102,7 @@ invalid_profile_id_at_start_story_generation: |
 new_tale_clicked: |
     The user has clicked on "New Tale". 
     Please follow these steps to assist them in starting a new story:
-    0. Look at all previous messages and make sure you don't greet the user again if you already have done so.
+    0. Look at all previous messages and make sure you don't greet the user again if you already have done so. If you DONOT have access to the previous messages, then assume you have already greeted the user. DO NOT GREET TWICE!
     
     1. Craft a warm and enthusiastic message acknowledging the user's choice to create a new story. Be creative and use emojis. Express excitement about collaborating with them on this creative journey.
 

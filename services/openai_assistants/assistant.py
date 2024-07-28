@@ -49,6 +49,7 @@ class Assistant(ABC, Generic[TInput, TResponse]):
         self.openai_thread = None
         self.vector_store_id = None
         self.file_ids = []
+        self.latest_messages_data = []
         self.retry_count = 0
 
         logger.info(f"{self.config.name} AI assistant class initialized.")

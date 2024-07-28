@@ -181,7 +181,7 @@ class MagicTalesCoreOrchestrator:
             Command.CONVERSATION_RECOVERY: self.handle_command_conversation_recovery,
             Command.LINK_USER_WITH_CONVERSATIONS: self.handle_command_link_user_with_conversations,
             Command.USER_MESSAGE: self._handle_communication_with_assistant,
-            Command.USER_LOGGED_IN: self.handle_command_new_tale,
+            # Command.USER_LOGGED_IN: self.handle_command_new_tale,
         }
 
         self.user_language = None
@@ -236,7 +236,7 @@ class MagicTalesCoreOrchestrator:
 
         await self.send_working_command_to_frontend(True)
 
-        if self.user_id != coming_user_id:
+        if self.user_id != coming_user_id and coming_user_id is not None:
             await self._handle_user_id_change(coming_user_id, frontend_request.try_mode)
 
         await self._save_command_message(frontend_request)
@@ -287,12 +287,13 @@ class MagicTalesCoreOrchestrator:
 
         Args:
             frontend_request (WSInput): The request from the frontend containing the command to process.
-        """
+        """        
         handler = self.frontend_command_handlers.get(frontend_request.command)
         if handler:
+            logger.warning(f"FrontEnd Command received: {frontend_request.command}")
             await handler(frontend_request)
         else:
-            logger.warning(f"Unknown command: {frontend_request.command}")
+            logger.warning(f"Unknown FrontEnd Command: {frontend_request.command}")
 
     async def _initialize_assistants(
         self,
@@ -727,13 +728,17 @@ class MagicTalesCoreOrchestrator:
                 num_messages=self.config.supervisor_assistant.num_last_messages_to_use
             )
             if await ai_supervisor_response.get_intervention_needed():
-                logger.warning(f"Supervisor: Intervention_needed!!")
-                intervention_message = (
-                    await ai_supervisor_response.get_message_for_user()
-                )
-                logger.info(f"Intervetion message:{intervention_message}")
-                await self._generate_system_request_to_update_user(intervention_message)
-                return
+                self.supervisor_assistant.interventions_count += 1
+                if self.supervisor_assistant.interventions_count <= self.supervisor_assistant.interventions_count_limit:
+                    logger.warning(f"Supervisor: Intervention_needed!!")
+                    intervention_message = (
+                        await ai_supervisor_response.get_message_for_user()
+                    )
+                    logger.info(f"Intervetion message:{intervention_message}")
+                    await self._generate_system_request_to_update_user(intervention_message)
+                    return
+            
+            self.supervisor_assistant.interventions_count = 0
 
         # Construct a response to be sent by the AI Core Interface Layer to the Front End, so the user can see it
         chat_assistant_response_for_frontend = WSOutput(

@@ -4,5 +4,6 @@ temperature: 0.0
 instructions_path: "services/openai_assistants/supervisor_assistant/instructions/supervisor_assistant_instructions.txt"
 max_retries: 3
 num_last_messages_to_use: 4
+interventions_count_limit: 3
 tools:
   - type: "file_search"

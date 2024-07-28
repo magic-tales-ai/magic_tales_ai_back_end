@@ -26,6 +26,8 @@ class SupervisorAssistant(
             config (DictConfig): Configuration parameters.
         """
         super().__init__(config)
+        self.interventions_count = 0
+        self.interventions_count_limit = config.interventions_count_limit
 
     def _parse_with_fallbacks(
         self, ai_message_content: str
