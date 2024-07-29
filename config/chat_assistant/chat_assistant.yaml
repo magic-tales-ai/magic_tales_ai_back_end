@@ -2,7 +2,7 @@ name: "Smarty Tales"
 model: "gpt-4-turbo"
 temperature: 0.1
 instructions_path: "services/openai_assistants/chat_assistant/instructions/chat_assistant_instructions.txt"
-files_path: "services/openai_assistants/chat_assistant/chat_assistant_files"
 max_retries: 3
 tools:
-  - type: "file_search" 
+  - type: "file_search"
+  - type: "retrieval"

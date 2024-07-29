@@ -1,6 +1,12 @@
 defaults:  
   - _self_
   - chat_assistant: chat_assistant  
+  - user_profile_agent: user_profile_agent
+  - cognitive_agent: cognitive_agent
+  - contextual_retrieval_agent: contextual_retrieval_agent
+  - document_ranking_agent: document_ranking_agent
+  - feedback_agent: feedback_agent
+  - live_session_agent: live_session_agent  
   - helper_assistant: helper_assistant
   - supervisor_assistant: supervisor_assistant
   - chapter_scoring: chapter_scoring  

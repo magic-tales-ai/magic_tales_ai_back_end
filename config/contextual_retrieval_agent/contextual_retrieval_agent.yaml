@@ -1,0 +1,7 @@
+name: "contextual_retrieval_agent"
+model: "gpt-4-turbo"
+temperature: 0.1
+instructions_path: "services/openai_assistants/contextual_retrieval_agent/instructions/contextual_retrieval_agent_instructions.txt"
+max_retries: 3
+tools:
+  - type: "file_search" 

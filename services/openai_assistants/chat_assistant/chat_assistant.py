@@ -6,7 +6,7 @@ import re
 
 
 from services.utils.log_utils import get_logger
-from services.openai_assistants.assistant import Assistant
+from services.openai_assistants.magic_tales_assistant import MagicTalesAgent
 from services.custom_exceptions.custom_exceptions import NotADictionaryError
 from .chat_assistant_response import ChatAssistantResponse
 from .chat_assistant_input import ChatAssistantInput
@@ -15,8 +15,8 @@ from .chat_assistant_input import ChatAssistantInput
 logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
-
-class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
+class ChatAssistant(MagicTalesAgent[ChatAssistantInput, ChatAssistantResponse]):
+#class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
     def __init__(self, config):
         """
         Initialize the Chat Assistant.

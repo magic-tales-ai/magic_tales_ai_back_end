@@ -1,0 +1,7 @@
+name: "user_profile_agent"
+model: "gpt-4-turbo"
+temperature: 0.1
+instructions_path: "services/openai_assistants/user_profile_agent/instructions/user_profile_agent_instructions.txt"
+max_retries: 3
+tools:
+  - type: "file_search" 

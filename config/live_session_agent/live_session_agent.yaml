@@ -1,0 +1,7 @@
+name: "live_session_agent"
+model: "gpt-4-turbo"
+temperature: 0.1
+instructions_path: "services/openai_assistants/live_session_agent/instructions/live_session_agent_instructions.txt"
+max_retries: 3
+tools:
+  - type: "file_search" 

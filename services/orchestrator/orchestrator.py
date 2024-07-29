@@ -57,6 +57,13 @@ from services.openai_assistants.supervisor_assistant.supervisor_assistant_input 
 from services.openai_assistants.supervisor_assistant.supervisor_assistant_response import (
     SupervisorAssistantResponse,
 )
+
+from services.openai_assistants.magic_tales_agent_group import MagicTalesAgentGroup
+
+from services.openai_assistants.magic_tales_global_memory import GlobalMemory
+from services.openai_assistants.magic_tales_workflow import MagicTalesWorkflow
+
+
 from services.utils.file_utils import (
     create_new_story_directory,
     get_latest_story_directory,
@@ -136,6 +143,12 @@ class MagicTalesCoreOrchestrator:
 
         # Configuration
         self.config = copy.deepcopy(config)
+
+        # Initialize PersonaRAG components
+        self.global_memory = GlobalMemory()
+        self.agent_group = MagicTalesAgentGroup()
+        self.agent_group.initialize_agents(config)
+        self.workflow = MagicTalesWorkflow(self.agent_group, self.global_memory)
 
         # Initialize the Chat Assistant
         self.chat_assistant = ChatAssistant(config=self.config.chat_assistant)
@@ -707,16 +720,11 @@ class MagicTalesCoreOrchestrator:
         """
         await self.send_working_command_to_frontend(True)
 
-        message_for_assistant = ChatAssistantInput(
-            message=request.message, source=source
-        )
+        # Use PersonaRAG workflow instead of direct chat assistant
+        workflow_response = await self.workflow.execute(request.message)
 
-        # Generate AI response for the user message
-        chat_assistant_response: ChatAssistantResponse = (
-            await self.chat_assistant.request_ai_response(message_for_assistant)
-        )
-        ai_message_for_user = await chat_assistant_response.get_message_for_user()
-        ai_message_for_system = await chat_assistant_response.get_message_for_system()
+        ai_message_for_user = workflow_response.message_for_user
+        ai_message_for_system = workflow_response.message_for_system
 
         logger.info(f"Chat Assistant response to User: {ai_message_for_user}")
         logger.info(f"Chat Assistant response to Sys: {ai_message_for_system}")
@@ -1024,7 +1032,14 @@ class MagicTalesCoreOrchestrator:
             )
             return
 
-        command = ai_message_for_system.get("command", None)
+        cognitive_agent = self.agent_group.agent_dic["cognitive_agent"]
+        refined_response = await cognitive_agent.refine_response(
+            ai_message_for_system,
+            self.user_dict,
+            self.global_memory.to_dict()
+        )
+        # Process the refined response
+        command = refined_response.get("command", None)
 
         if not command:
             await self._generate_system_request_to_update_user(

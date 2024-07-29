@@ -1,0 +1,7 @@
+name: "feedback_agent"
+model: "gpt-4-turbo"
+temperature: 0.1
+instructions_path: "services/openai_assistants/feedback_agent/instructions/feedback_agent_instructions.txt"
+max_retries: 3
+tools:
+  - type: "file_search" 

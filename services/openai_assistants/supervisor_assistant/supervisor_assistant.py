@@ -6,7 +6,7 @@ import re
 
 
 from services.utils.log_utils import get_logger
-from services.openai_assistants.assistant import Assistant
+from services.openai_assistants.magic_tales_assistant import MagicTalesAgent
 from .supervisor_assistant_response import SupervisorAssistantResponse
 from .supervisor_assistant_input import SupervisorAssistantInput
 
@@ -15,9 +15,10 @@ logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
 
-class SupervisorAssistant(
-    Assistant[SupervisorAssistantInput, SupervisorAssistantResponse]
-):
+class SupervisorAssistant(MagicTalesAgent[SupervisorAssistantInput, SupervisorAssistantResponse]):
+# class SupervisorAssistant(
+#     Assistant[SupervisorAssistantInput, SupervisorAssistantResponse]
+# ):
     def __init__(self, config):
         """
         Initialize the Chat Assistant.
