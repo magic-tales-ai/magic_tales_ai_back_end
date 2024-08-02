@@ -11,10 +11,12 @@
 - **Character Development**: Explore and elaborate on character arcs, transformations, and introductions using the 'Story information and instructions' below.
 - **Setting and Atmosphere**: Detail the setting’s influence on the story, evolution of the world, and atmospheric conditions using the 'Story information and instructions' below
 - **Plot Dynamics**: Outline major plot points, conflicts, and future foreshadowing using the 'Story information and instructions' below.
+- **Dialogues**: Stories, especially for kids and young adults, are told with dialogues. It MUST AND WILL have lots of dialogues.
 
 - 'Story information and instructions':
 {story_blueprint}
 
+IMPORTANT: Generate your response in the LANGUAGE indicated to be used in the "story features" above.
 ### Previous Chapter Context ###
 - **Narrative Continuity**: Use the previous chapter below to ensure continuity and alignment with the storyline.
 - **Previous Chapter**:

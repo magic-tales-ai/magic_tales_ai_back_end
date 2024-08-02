@@ -4,7 +4,10 @@ import json
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 import random
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_core.prompts import ChatPromptTemplate
+
 from langchain.schema import messages_to_dict
 from omegaconf import DictConfig, OmegaConf
 
@@ -70,7 +73,7 @@ class ChapterGenerationMechanism:
             # max_tokens=self.config.main_llm.max_tokens,
             # model_kwargs={"top_p": self.config.main_llm.top_p},
             verbose=True,
-            request_timeout=self.config.main_llm.request_timeout,
+            timeout=self.config.main_llm.request_timeout,
         )
 
         parser_llm = ChatOpenAI(

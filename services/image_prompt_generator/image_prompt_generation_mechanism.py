@@ -2,7 +2,9 @@ import copy
 
 from typing import Any, Dict, List
 
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+
 from omegaconf import DictConfig
 
 from services.prompts_constructors.image_prompt_generator import prompt_constructor
@@ -39,10 +41,10 @@ class ImagePromptGenerationMechanism:
         """
         self.image_prompt_generator = ImagePromptGeneratorLLM(
             main_llm=ChatOpenAI(
-                model_name=self.config.main_llm.model,
-                temperature=self.config.main_llm.temperature,
+                model_name=self.config.image_prompt_generator.model,
+                temperature=self.config.image_prompt_generator.temperature,
                 verbose=True,
-                request_timeout=self.config.main_llm.request_timeout,
+                timeout=self.config.image_prompt_generator.request_timeout,
             ),
             parser_llm=ChatOpenAI(
                 model_name=self.config.parser_llm.model,
@@ -57,8 +59,12 @@ class ImagePromptGenerationMechanism:
     def _generate_single_image_prompt(self, prompt: str) -> Dict[str, Any]:
         """Generate a single image prompt."""
         try:
-            image_prompt_responses, image_prompt_generator_prompt_messages = self.image_prompt_generator.generate_single_image_prompt(prompt)
-            image_prompt_generator_success, image_prompt_response = image_prompt_responses[0]
+            image_prompt_responses, image_prompt_generator_prompt_messages = (
+                self.image_prompt_generator.generate_single_image_prompt(prompt)
+            )
+            image_prompt_generator_success, image_prompt_response = (
+                image_prompt_responses[0]
+            )
 
             if not image_prompt_generator_success:
                 raise RuntimeError("No image prompt response generated")
@@ -68,11 +74,16 @@ class ImagePromptGenerationMechanism:
                 "image_prompt_generator_prompt_messages": image_prompt_generator_prompt_messages,
                 "image_prompt_response_content_dict": {
                     "annotated_chapter": prompt,  # We use the original prompt as there's no chapter to annotate
-                    "image_prompts": [image_prompt_response]  # Wrap in a list to maintain consistency with chapter prompts
-                }
+                    "image_prompts": [
+                        image_prompt_response
+                    ],  # Wrap in a list to maintain consistency with chapter prompts
+                },
             }
         except Exception as e:
-            logger.error(f"Failed to create image prompt for the cover. Error: {e}", exc_info=True)
+            logger.error(
+                f"Failed to create image prompt for the cover. Error: {e}",
+                exc_info=True,
+            )
             return {"image_prompt_generator_success": False}
 
     def _generate_image_prompts_per_chapter(
@@ -81,9 +92,12 @@ class ImagePromptGenerationMechanism:
         """
         Generates image prompts for a given chapter content and annotates the chapter with image tags.
         """
-        log_message = "Generating cover image prompt." if is_cover else "Generating chapter image prompts and placing image annotations inside the chapter."
+        log_message = (
+            "Generating cover image prompt."
+            if is_cover
+            else "Generating chapter image prompts and placing image annotations inside the chapter."
+        )
         logger.info(log_message)
-
 
         for attempt in range(1, self.config.main_llm.max_retries + 1):
             try:
@@ -91,7 +105,7 @@ class ImagePromptGenerationMechanism:
                     image_prompt_responses,
                     image_prompt_generator_prompt_messages,
                 ) = self.image_prompt_generator.generate_image_prompts(
-                    chapter_number, chapter_content,is_cover
+                    chapter_number, chapter_content, is_cover
                 )
                 (
                     image_prompt_generator_success,

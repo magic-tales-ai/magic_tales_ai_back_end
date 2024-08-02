@@ -146,7 +146,9 @@ def build_graph_viz(path_to_root_node_folder: str = None) -> bool:
 
     except Exception as e:
         tb = traceback.format_exc()
-        logger.info(f"Could NOT load & visualize {root_node_file}.\nException: {e}\n{tb}")
+        logger.info(
+            f"Could NOT load & visualize {root_node_file}.\nException: {e}\n{tb}"
+        )
         return False
 
 
@@ -232,7 +234,9 @@ def animate_mcts_evolution(path_to_root_node_folder: str = None) -> bool:
 
     except Exception as e:
         tb = traceback.format_exc()
-        logger.info(f"Could NOT load & visualize the tree evolution.\nException: {e}\n{tb}")
+        logger.info(
+            f"Could NOT load & visualize the tree evolution.\nException: {e}\n{tb}"
+        )
         return False
 
 

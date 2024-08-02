@@ -1,7 +1,8 @@
 import os
 from typing import Dict
 
-from langchain_community.chat_models.openai import BaseChatModel
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain.output_parsers import (
     OutputFixingParser,
     RetryWithErrorOutputParser,
@@ -28,14 +29,14 @@ def load_prompt(prompt: str, package_path: str = PROMPTS_PATH) -> str:
 
 
 def get_retry_output_parser(
-    output_parser: StructuredOutputParser, llm: BaseChatModel
+    output_parser: StructuredOutputParser, llm: ChatOpenAI
 ) -> RetryWithErrorOutputParser:
     """
     Get a RetryWithErrorOutputParser instance.
 
     Args:
         output_parser (StructuredOutputParser): The structured output parser.
-        llm (BaseChatModel): The language model.
+        llm (ChatOpenAI): The language model.
 
     Returns:
         RetryWithErrorOutputParser: The RetryWithErrorOutputParser instance.

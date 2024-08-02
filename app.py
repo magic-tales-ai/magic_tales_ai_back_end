@@ -16,9 +16,9 @@ from controllers.ai_core_controller import ai_core_router
 
 import sentry_sdk
 
-DEFAULT_SERVER_HOST = '127.0.0.1'
+DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 8000
-DEFAULT_STATIC_FOLDER = '/tmp'
+DEFAULT_STATIC_FOLDER = "/tmp"
 
 sentry_sdk.init(
     dsn="https://28c83116aebb31f9bdb4619a95ae5135@o4507544276303872.ingest.us.sentry.io/4507544617680896",
@@ -52,6 +52,6 @@ if __name__ == "__main__":
         host=os.getenv("SERVER_HOST", DEFAULT_SERVER_HOST),
         port=int(os.getenv("SERVER_PORT", DEFAULT_SERVER_PORT)),
         proxy_headers=True,
-        forwarded_allow_ips='*',
+        forwarded_allow_ips="*",
         reload=True,
     )

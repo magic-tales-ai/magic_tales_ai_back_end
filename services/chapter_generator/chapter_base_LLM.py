@@ -5,7 +5,8 @@ from typing import Dict, List, Optional, Tuple
 from langchain_community.callbacks import get_openai_callback
 from langchain_community.callbacks.openai_info import OpenAICallbackHandler
 
-from langchain_community.chat_models.openai import BaseChatModel
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain.schema import BaseMessage, OutputParserException
 
@@ -24,8 +25,8 @@ class ChapterBaseLLM(ABC):
 
     def __init__(
         self,
-        main_llm: BaseChatModel,
-        parser_llm: BaseChatModel,
+        main_llm: ChatOpenAI,
+        parser_llm: ChatOpenAI,
         prompt_constructor: ModuleType,
         story_blueprint: Dict[str, str],
         previous_chapter_content: str,
@@ -35,8 +36,8 @@ class ChapterBaseLLM(ABC):
         Initialize the ChapterBaseLLM.
 
         Args:
-            main_llm (BaseChatModel): The primary LLM used for generating responses.
-            parser_llm (BaseChatModel): The secondary LLM used for parsing incorrect responses.
+            main_llm (ChatOpenAI): The primary LLM used for generating responses.
+            parser_llm (ChatOpenAI): The secondary LLM used for parsing incorrect responses.
             prompt_constructor (ModuleType): The module used for rendering prompts.
             num_outputs (int, optional): The number of outputs to generate. Defaults to 1.
         """
@@ -94,7 +95,7 @@ class ChapterBaseLLM(ABC):
         output_artifacts = []
         for _ in range(self.num_outputs):
             with get_openai_callback() as cb:
-                ai_message = self.main_llm(messages)
+                ai_message = self.main_llm.invoke(messages)
                 retry_output_parser = get_retry_output_parser(
                     output_parser, self.parser_llm
                 )

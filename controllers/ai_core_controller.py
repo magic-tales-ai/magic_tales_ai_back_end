@@ -29,22 +29,21 @@ with initialize(config_path="../config"):
 orchestrators = {}
 users = {}
 
+
 def update_dicts(websocket):
     global orchestrators, users
     if websocket in orchestrators:
         orchestrators.pop(websocket)
-    users = {
-        key: val for key,
-        val in users.items() if val != websocket
-    }
+    users = {key: val for key, val in users.items() if val != websocket}
 
-    logger.info(f'users: - {users}')
-    logger.info(f'orchestrators: - {orchestrators}')
+    logger.info(f"users: - {users}")
+    logger.info(f"orchestrators: - {orchestrators}")
+
 
 @ai_core_router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    logger.info(f'users: {users}')
-    logger.info(f'orchestrators: {orchestrators}')
+    logger.info(f"users: {users}")
+    logger.info(f"orchestrators: {orchestrators}")
     # TODO: remove this
     # Generate UID for the websocket instance ???
     websocket_uid = websocket.query_params.get(
@@ -73,7 +72,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 websocket=websocket,
             )
 
-            logger.info(f'+ orchestrators: {orchestrators}')
+            logger.info(f"+ orchestrators: {orchestrators}")
 
             while True:
                 try:
@@ -82,50 +81,52 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # Validate token
                     if not request.token:
-                        await websocket.send_json({
-                            "uid": websocket.uid,
-                            "error": "Token is required."
-                        })
+                        await websocket.send_json(
+                            {"uid": websocket.uid, "error": "Token is required."}
+                        )
                         continue
 
                     try:
                         token_data = await check_token(request.token)
                     except:
-                        #if not token_data:
-                        await websocket.send_json({
-                            "uid": websocket.uid,
-                            "error": "Invalid token."
-                        })
+                        # if not token_data:
+                        await websocket.send_json(
+                            {"uid": websocket.uid, "error": "Invalid token."}
+                        )
                         continue
-                    user_id = token_data['user_id']
+                    user_id = token_data["user_id"]
                     if user_id in users and not users[user_id] == websocket:
-                        await websocket.send_json({
-                            "uid": websocket.uid,
-                            "error": "User connected already."
-                        })
+                        await websocket.send_json(
+                            {"uid": websocket.uid, "error": "User connected already."}
+                        )
                         continue
 
                     users[user_id] = websocket
 
-                    logger.info(f'+ users: {users}')
+                    logger.info(f"+ users: {users}")
 
                     # Validate command is not empty
-                    if not request.command in orchestrators[websocket].frontend_command_handlers:
-                        await websocket.send_json({
-                            "uid": websocket.uid,
-                            "error": f"Command '{request.command}' invalid. Commands valids are: {' | '.join(i for i in orchestrators[websocket].frontend_command_handlers)}"
-                        })
+                    if (
+                        not request.command
+                        in orchestrators[websocket].frontend_command_handlers
+                    ):
+                        await websocket.send_json(
+                            {
+                                "uid": websocket.uid,
+                                "error": f"Command '{request.command}' invalid. Commands valids are: {' | '.join(i for i in orchestrators[websocket].frontend_command_handlers)}",
+                            }
+                        )
                         continue
 
                     # Process the command with the orchestrator
                     try:
-                        await orchestrators[websocket].process_frontend_request(request, token_data)
+                        await orchestrators[websocket].process_frontend_request(
+                            request, token_data
+                        )
                     except Exception as e:
-                        await websocket.send_json({
-                            "uid": websocket.uid,
-                            "error": f"{traceback.format_exc()}"
-                        })
-
+                        await websocket.send_json(
+                            {"uid": websocket.uid, "error": f"{traceback.format_exc()}"}
+                        )
 
                 except WebSocketDisconnect:
                     logger.info("WebSocket disconnected by the server")
@@ -138,7 +139,9 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as ex:
             # await websocket.send_json({"error": str(ex)})
             # await websocket.close()
-            logger.info(f"WebSocket connection error", exc_info=True) #: {ex}/n/n{traceback.format_exc()}")
+            logger.info(
+                f"WebSocket connection error", exc_info=True
+            )  #: {ex}/n/n{traceback.format_exc()}")
             update_dicts(websocket)
             # break  # Exit the loop to end the session context manager
         finally:

@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 
-from langchain_community.chat_models.openai import BaseChatModel
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain.schema import BaseMessage
 
 from services.prompts_constructors.critic import prompt_constructor
@@ -18,8 +19,8 @@ class ChapterCriticLLM(ChapterBaseLLM):
 
     def __init__(
         self,
-        main_llm: BaseChatModel,
-        parser_llm: BaseChatModel,
+        main_llm: ChatOpenAI,
+        parser_llm: ChatOpenAI,
         story_blueprint: Dict[str, str],
         previous_chapter_content: str,
         num_outputs: Optional[int] = 1,
@@ -28,8 +29,8 @@ class ChapterCriticLLM(ChapterBaseLLM):
         Initialize the ChapterCriticLLM.
 
         Args:
-            main_llm (BaseChatModel): The LLM used for criticizing story.
-            parser_llm (BaseChatModel): The LLM used for parsing incorrect responses.
+            main_llm (ChatOpenAI): The LLM used for criticizing story.
+            parser_llm (ChatOpenAI): The LLM used for parsing incorrect responses.
             num_outputs (int, optional): The number of outputs to generate. Defaults to 1.
         """
         super().__init__(

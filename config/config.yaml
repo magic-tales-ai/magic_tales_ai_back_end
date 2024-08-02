@@ -4,6 +4,7 @@ defaults:
   - helper_assistant: helper_assistant
   - supervisor_assistant: supervisor_assistant
   - chapter_scoring: chapter_scoring  
+  - image_prompt_generator: image_prompt_generator
   - image_generator: dalle3   
   - main_llm: main_llm
   - mcts: mcts

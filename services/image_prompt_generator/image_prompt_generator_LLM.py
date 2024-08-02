@@ -6,7 +6,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from langchain_community.callbacks import get_openai_callback
 from langchain_community.callbacks.openai_info import OpenAICallbackHandler
 
-from langchain_community.chat_models.openai import BaseChatModel
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain.schema import BaseMessage, OutputParserException
 
@@ -25,8 +26,8 @@ class ImagePromptGeneratorLLM(ABC):
 
     def __init__(
         self,
-        main_llm: BaseChatModel,
-        parser_llm: BaseChatModel,
+        main_llm: ChatOpenAI,
+        parser_llm: ChatOpenAI,
         prompt_constructor: ModuleType,
         num_outputs: Optional[int] = 1,
     ):
@@ -34,8 +35,8 @@ class ImagePromptGeneratorLLM(ABC):
         Initialize the ChapterBaseLLM.
 
         Args:
-            main_llm (BaseChatModel): The primary LLM used for generating responses.
-            parser_llm (BaseChatModel): The secondary LLM used for parsing incorrect responses.
+            main_llm (ChatOpenAI): The primary LLM used for generating responses.
+            parser_llm (ChatOpenAI): The secondary LLM used for parsing incorrect responses.
             prompt_constructor (ModuleType): The module used for rendering prompts.
             num_outputs (int, optional): The number of outputs to generate. Defaults to 1.
         """
@@ -65,7 +66,7 @@ class ImagePromptGeneratorLLM(ABC):
 
     def generate_image_prompts(
         self, chapter_number: int, chapter_content: str, is_cover: bool = False
-    ) -> Tuple[List[Tuple[bool, Dict[str, Any]]], List[Any]]:        
+    ) -> Tuple[List[Tuple[bool, Dict[str, Any]]], List[Any]]:
         """
         Generates output from the LLM.
 
@@ -76,14 +77,16 @@ class ImagePromptGeneratorLLM(ABC):
             Tuple[List[Tuple[bool, Dict[str, str]]], List[BaseMessage]]: A tuple of outputs and messages.
             Output artifacts is a list of tuples, each containing a status boolean and an output dict.
             Messages is a list of prompts that were constructed to generate output.
-        """        
+        """
         # Prepare prompts and parser
         (
             system_message,
             output_parser,
         ) = self.prompt_constructor.compose_system_message_and_create_output_parser()
 
-        human_message = self.prompt_constructor.compose_message_for_LLM(chapter_number, chapter_content, is_cover)
+        human_message = self.prompt_constructor.compose_message_for_LLM(
+            chapter_number, chapter_content, is_cover
+        )
         messages = [system_message, human_message]
 
         # Generate output

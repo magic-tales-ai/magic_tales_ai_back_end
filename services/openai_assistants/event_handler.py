@@ -71,7 +71,9 @@ class EventHandler(AssistantEventHandler):
         self.tool_id = tool_call.id
         logger.info(f"\on_tool_call_created > run_step.status > {self.run_step.status}")
 
-        logger.info(f"\nassistant > {tool_call.type} {self.function_name}\n", flush=True)
+        logger.info(
+            f"\nassistant > {tool_call.type} {self.function_name}\n", flush=True
+        )
 
         keep_retrieving_run = openai_client.beta.threads.runs.retrieve(
             thread_id=self.thread_id, run_id=self.run_id

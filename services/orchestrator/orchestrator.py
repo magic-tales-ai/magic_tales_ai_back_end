@@ -287,7 +287,7 @@ class MagicTalesCoreOrchestrator:
 
         Args:
             frontend_request (WSInput): The request from the frontend containing the command to process.
-        """        
+        """
         handler = self.frontend_command_handlers.get(frontend_request.command)
         if handler:
             logger.warning(f"FrontEnd Command received: {frontend_request.command}")
@@ -369,7 +369,6 @@ class MagicTalesCoreOrchestrator:
         if await self.last_story_finished_correctly(self.user_id):
             asyncio.create_task(self._handle_new_tale())
 
-
     async def handle_command_spin_off(self, frontend_request: WSInput):
         if not frontend_request.story_id:
             raise Exception("story_id is required for spin-off")
@@ -396,10 +395,12 @@ class MagicTalesCoreOrchestrator:
                 data={"conversations": conversation_dicts},
             )
         )
-        await self._generate_system_request_to_update_user(
-            self.config.updates_request_prompts.coversation_recovery,
-            conversation=conversation_dicts,
-        )
+
+        await self.last_story_finished_correctly(self.user_id)
+        # await self._generate_system_request_to_update_user(
+        #     self.config.updates_request_prompts.coversation_recovery,
+        #     conversation=conversation_dicts,
+        # )
 
     async def handle_command_link_user_with_conversations(
         self, frontend_request: WSInput
@@ -687,7 +688,7 @@ class MagicTalesCoreOrchestrator:
         return [
             {
                 "role": message.role,
-                "content": message.content[0].text.value if message.content else ""
+                "content": message.content[0].text.value if message.content else "",
             }
             for message in messages
         ]
@@ -729,15 +730,20 @@ class MagicTalesCoreOrchestrator:
             )
             if await ai_supervisor_response.get_intervention_needed():
                 self.supervisor_assistant.interventions_count += 1
-                if self.supervisor_assistant.interventions_count <= self.supervisor_assistant.interventions_count_limit:
+                if (
+                    self.supervisor_assistant.interventions_count
+                    <= self.supervisor_assistant.interventions_count_limit
+                ):
                     logger.warning(f"Supervisor: Intervention_needed!!")
                     intervention_message = (
                         await ai_supervisor_response.get_message_for_user()
                     )
                     logger.info(f"Intervetion message:{intervention_message}")
-                    await self._generate_system_request_to_update_user(intervention_message)
+                    await self._generate_system_request_to_update_user(
+                        intervention_message
+                    )
                     return
-            
+
             self.supervisor_assistant.interventions_count = 0
 
         # Construct a response to be sent by the AI Core Interface Layer to the Front End, so the user can see it
@@ -1274,7 +1280,8 @@ class MagicTalesCoreOrchestrator:
         updated_age = ai_message_for_system["updated_age"]
         updated_details = ai_message_for_system["updated_details"]
 
-        if not updated_name or not updated_age or not updated_details:
+        has_changed = updated_name or updated_age or updated_details
+        if not has_changed:
             logging.error(
                 "At least one of the following name, age or details are required for profile update, but one or more were NOT provided by the assistant. Asking assistant to solve"
             )
@@ -1818,15 +1825,21 @@ class MagicTalesCoreOrchestrator:
         try:
             await self.story_manager.refresh()
             synopsis = self.story_manager.story.synopsis
-            cover_prompt_data = self.image_prompt_generation_mechanism._generate_image_prompts_per_chapter(0, synopsis, is_cover=True)
+            cover_prompt_data = self.image_prompt_generation_mechanism._generate_image_prompts_per_chapter(
+                0, synopsis, is_cover=True
+            )
 
             if cover_prompt_data.get("image_prompt_generator_success"):
                 return {-1: {"title": "Cover", "image_prompt_data": cover_prompt_data}}
             else:
-                logger.warning("Failed to generate image prompt for the cover. Skipping.")
+                logger.warning(
+                    "Failed to generate image prompt for the cover. Skipping."
+                )
                 return {}
         except Exception as e:
-            logger.exception(f"Exception while generating image prompt for the cover: {e}")
+            logger.exception(
+                f"Exception while generating image prompt for the cover: {e}"
+            )
             return {}
 
     async def _extract_post_processed_chapters(
@@ -1848,7 +1861,7 @@ class MagicTalesCoreOrchestrator:
         for chapter_number, chapter_data in all_image_prompts.items():
             chapter_title = chapter_data.get(
                 "title",
-                "Cover" if chapter_number == -1 else f"Chapter {chapter_number + 1}"
+                "Cover" if chapter_number == -1 else f"Chapter {chapter_number + 1}",
             )
             chapter_content = chapter_data["image_prompt_data"][
                 "image_prompt_response_content_dict"

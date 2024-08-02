@@ -194,4 +194,4 @@ Please provide the extracted story features based on the following conversation:
 {chat_string}
 """
 
-ALL your extracted story features are:
+EACH and EVERY story features is (list them all and for those that you do not have an answer from the conversation you are allowed to make the best educated guess you can, but you must list an value or answer to ALL of them):

@@ -1,0 +1,9 @@
+model: "gpt-4-turbo"
+temperature: 0.0
+num_responses: 1
+top_p: 0.001  
+max_tokens: 600000
+max_retries: 2
+request_timeout: 240
+start_cmd: None
+end_cmd: None
