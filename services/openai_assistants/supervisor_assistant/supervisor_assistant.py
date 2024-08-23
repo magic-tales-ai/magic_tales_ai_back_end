@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import traceback
 import json
 import logging
-import re
+from openai.types.beta.assistant_response_format_option_param import ResponseFormatText
 
 
 from services.utils.log_utils import get_logger
@@ -20,7 +20,7 @@ class SupervisorAssistant(
 ):
     def __init__(self, config):
         """
-        Initialize the Chat Assistant.
+        Initialize the Supervisor Assistant.
 
         Args:
             config (DictConfig): Configuration parameters.
@@ -28,6 +28,12 @@ class SupervisorAssistant(
         super().__init__(config)
         self.interventions_count = 0
         self.interventions_count_limit = config.interventions_count_limit
+
+    def _initialize_response_format(self):
+        """
+        Initialize the response format specific to ChatAssistant.
+        """
+        self._response_format = ResponseFormatText(type="text")
 
     def _parse_with_fallbacks(
         self, ai_message_content: str

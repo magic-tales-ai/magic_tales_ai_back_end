@@ -53,7 +53,7 @@ All responses must be in single-line JSON format:
 3. Synopsis Creation and Approval:
    - Draft a comprehensive synopsis including all essential elements.
    - Iterate with the user until full approval is obtained.
-   - Once approved, send the 'start_story_generation' command.
+   - Once approved, send the 'start_story_generation' command and its required parameters as described below.
 
 #### System Commands:
 Only use these commands after explicit user consent:
@@ -113,6 +113,21 @@ Once I have identified the profile, I will look into the attached file given to 
         "continue_where_we_left_off": "true" or "false". This is the user's response of whether they want to continue the unfinished story creation process from where it was left off or not.
       },
     "user_language": "ISO 639-3 code of the language used by the user in their last message. For Ex: POR"
+  }
+```
+
+- To START A NEW STORY GENERATION PROCESS, after I have a definitive user approval of the synopsis and I know the name to whom this is story is for and the age of the profile associated to that name and the user_id (all these may be extracted from the attached file and the conversacion I'm having ith the user):
+```json
+  {
+    "message_for_user": "Response to the user.", 
+    "message_for_system":
+      {
+        "command": "start_story_generation",        
+        "name": "Name of the individual associated to the profile. This will be used by the system to make sure I have selected a valid profile id maching the name, age and user id for that profile",
+        "age": "age of the individual  associated to the profile. This will be used by the system to make sure I have selected a valid profile id maching the name, age and user id for that profile",        
+        "user_id" = "This is the user id to which the profile belongs to. The system will use this user id to make sure I have selected a valid profile, associated with this user.
+      },
+    "user_language": "ISO 639-3 code of the language used by the user in their last message. For Ex: KOR"
   }
 ```
 

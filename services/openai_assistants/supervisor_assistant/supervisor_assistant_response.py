@@ -1,4 +1,5 @@
 from typing import Optional
+from pydantic import BaseModel
 import logging
 
 from services.openai_assistants.assistant_response.assistant_response import (
@@ -10,6 +11,12 @@ from services.utils.log_utils import get_logger
 logging.basicConfig(level=logging.INFO)
 # Get a logger instance for this module
 logger = get_logger(__name__)
+
+
+class StructuredResponse(BaseModel):
+    """Response model"""
+
+    pass
 
 
 class SupervisorAssistantResponse(AssistantResponse):

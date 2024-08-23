@@ -1,4 +1,10 @@
-from typing import Optional
+from typing import Union, Optional, Literal
+from openai.types.beta.assistant_response_format_option_param import (
+    ResponseFormatText,
+    ResponseFormatJSONObject,
+    ResponseFormatJSONSchema,
+)
+
 import logging
 
 from services.openai_assistants.assistant_response.assistant_response import (
@@ -10,6 +16,56 @@ from services.utils.log_utils import get_logger
 logging.basicConfig(level=logging.INFO)
 # Get a logger instance for this module
 logger = get_logger(__name__)
+
+
+class Command(ResponseFormatJSONObject):
+    """Base class for all commands."""
+
+    command: str
+
+
+class UpdateProfile(Command):
+    """Command to update an existing profile."""
+
+    profile_id: int
+    current_name: str
+    current_age: str
+    user_id: str
+    updated_name: Optional[str] = None
+    updated_age: Optional[str] = None
+    updated_details: Optional[str] = None
+
+
+class NewProfile(Command):
+    """Command to create a new profile."""
+
+    name: str
+    age: int
+    details: str
+
+
+class ContinueUnfinishedStory(Command):
+    """Command to continue an unfinished story."""
+
+    continue_where_we_left_off: bool
+
+
+class StartStoryGeneration(Command):
+    """Command to start a new story generation process."""
+
+    name: str
+    age: int
+    user_id: str
+
+
+class StructuredResponse(ResponseFormatJSONObject):
+    """Response model containing the message for the user, the system command, and the user language."""
+
+    message_for_user: str
+    message_for_system: Optional[
+        Union[UpdateProfile, NewProfile, ContinueUnfinishedStory, StartStoryGeneration]
+    ] = None
+    user_language: str
 
 
 class ChatAssistantResponse(AssistantResponse):

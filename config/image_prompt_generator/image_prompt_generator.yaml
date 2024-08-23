@@ -1,4 +1,4 @@
-model: "gpt-4-turbo"
+model: "gpt-4o-2024-08-06"
 temperature: 0.0
 num_responses: 1
 top_p: 0.001  
