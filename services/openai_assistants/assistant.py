@@ -5,6 +5,7 @@ import asyncio
 import logging
 import json
 from typing import Any, Dict, List, Optional, Type, TypeVar, Generic, Callable
+from pydantic import BaseModel
 
 from openai import AsyncOpenAI
 from openai.types.beta.assistant_create_params import (
@@ -51,8 +52,19 @@ class Assistant(ABC, Generic[TInput, TResponse]):
         self.file_ids = []
         self.latest_messages_data = []
         self.retry_count = 0
+        self._response_format = None
+
+        self._initialize_response_format()  # Force child classes to set the response format
 
         logger.info(f"{self.config.name} AI assistant class initialized.")
+
+    @abstractmethod
+    def _initialize_response_format(self):
+        """
+        Abstract method to initialize the response format.
+        Must be implemented by child classes to set self._response_format.
+        """
+        pass
 
     def _validate_openai_api_key(self):
         """Validates the presence of the OpenAI API key."""
@@ -184,6 +196,7 @@ class Assistant(ABC, Generic[TInput, TResponse]):
                 temperature=self.config.temperature,
                 tools=self.config.tools,
                 tool_resources=tool_resources,
+                response_format=self._response_format,
             )
 
             self.openai_thread = await self.client.beta.threads.create()

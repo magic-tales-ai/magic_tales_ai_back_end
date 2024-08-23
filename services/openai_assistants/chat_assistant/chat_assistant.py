@@ -8,13 +8,15 @@ import re
 from services.utils.log_utils import get_logger
 from services.openai_assistants.assistant import Assistant
 from services.custom_exceptions.custom_exceptions import NotADictionaryError
-from .chat_assistant_response import ChatAssistantResponse
+from .chat_assistant_response import ChatAssistantResponse, StructuredResponse
 from .chat_assistant_input import ChatAssistantInput
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
+class JSONParsingError(Exception):
+    pass
 
 class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
     def __init__(self, config):
@@ -26,79 +28,87 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
         """
         super().__init__(config)
 
+    def _initialize_response_format(self):
+        """
+        Initialize the response format specific to ChatAssistant.
+        """
+        self._response_format = StructuredResponse
+
     def _parse_with_fallbacks(self, ai_message_content: str) -> ChatAssistantResponse:
         """
-        Attempts to directly parse AI message content as JSON and extract `message_for_user` and `message_for_system`.
+        Attempts to parse AI message content as JSON and extract required fields.
+
+        This method uses a series of fallback strategies to handle various input formats
+        and potential issues, aiming to always return a valid ChatAssistantResponse.
 
         Args:
             ai_message_content (str): The raw AI response content.
 
         Returns:
-            A ChatAssistantResponse containing: `message_for_user` as str and `message_for_system` as a dict or None for each if not applicable or errors occur.
-        """
+            ChatAssistantResponse: Containing extracted information or error details.
+        """    
+        def _safe_json_loads(content: str) -> Dict[str, Any]:
+            """Safely attempt to parse JSON content."""
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON parsing failed: {e}")
+                raise JSONParsingError(f"Invalid JSON: {e}")
+
+        def _extract_json_from_codeblock(content: str) -> str:
+            """Extract JSON content from a markdown code block if present."""
+            import re
+            json_pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
+            match = re.search(json_pattern, content)
+            return match.group(1) if match else content
+
+        def _sanitize_content(content: str) -> str:
+            """Remove potential problematic characters from the content."""
+            return content.strip().replace('\n', '').replace('\r', '')
+
+        def _validate_message_for_system(msg: Any) -> Dict[str, Any]:
+            """Ensure message_for_system is a dictionary."""
+            if not isinstance(msg, dict):
+                logger.warning("message_for_system is not a dictionary. Converting to empty dict.")
+                return {}
+            return msg
+
+        def _create_error_response(error_msg: str) -> ChatAssistantResponse:
+            """Create an error response with the original content as message_for_user."""
+            return ChatAssistantResponse(
+                message_for_user=ai_message_content,
+                message_for_system=None,
+                user_language=None,
+                error=error_msg
+            )
+
         try:
-            error_suffix = "Please take a thorough look at your instructions and the exact JSON structure that your responses must have."
-
-            # # Remove surrounding characters and escape single quotes
-            # sanitized_content = ai_message_content.strip("\`\n").replace("'", "\\'")
-
-            # # Remove leading and trailing quotes
-            # sanitized_content = sanitized_content.strip('"')
-
-            # # Replace escaped double quotes with single quotes
-            # sanitized_content = sanitized_content.replace('\\"', '"')
-
-            sanitized_content = ai_message_content
-
-            # Parse the sanitized JSON
-            ai_message_dict = json.loads(sanitized_content)
-
-            # Extract the required keys
-            message_for_user = ai_message_dict.get("message_for_user")
-            message_for_system = ai_message_dict.get("message_for_system")
-            user_language = ai_message_dict.get("user_language")
-
-            # Ensure message_for_system is a dictionary
-            if not isinstance(message_for_system, dict):
-                message_for_system = {}
-                raise NotADictionaryError(
-                    "message_for_system must be a dictionary. Follow your instructions and the JSON format for your responses"
-                )
-
+            # Extract JSON if it's within a code block
+            content = _extract_json_from_codeblock(ai_message_content)
+            
+            # Sanitize the content
+            sanitized_content = _sanitize_content(content)
+            
+            # Parse the JSON
+            parsed_content = _safe_json_loads(sanitized_content)
+            
+            # Extract and validate fields
+            message_for_user = parsed_content.get("message_for_user")
+            message_for_system = _validate_message_for_system(parsed_content.get("message_for_system"))
+            user_language = parsed_content.get("user_language")
+            
             return ChatAssistantResponse(
                 message_for_user=message_for_user,
                 message_for_system=message_for_system,
                 user_language=user_language,
-                error=None,
+                error=None
             )
-
-        except json.JSONDecodeError as e:
-            error = traceback.format_exc()
-            logger.error(f"JSON parsing failed: {error}")
-            # return self._extract_with_regex(ai_message_content)
-            return ChatAssistantResponse(
-                message_for_user=sanitized_content,
-                message_for_system=None,
-                user_language=None,
-                error=f"JSON parsing failed: {e}.\n{error_suffix}",
-            )
-        except KeyError as e:
-            error = traceback.format_exc()
-            logger.error(f"KeyError: {error}")
-            return ChatAssistantResponse(
-                message_for_user=sanitized_content,
-                message_for_system=None,
-                user_language=None,
-                error=f"{e}. {error_suffix}",
-            )
-        except NotADirectoryError as e:
-            logger.error("f{e}")
-            return ChatAssistantResponse(
-                message_for_user=sanitized_content,
-                message_for_system=None,
-                user_language=None,
-                error=f"{e}.\n{error_suffix}",
-            )
+        
+        except JSONParsingError as e:
+            return _create_error_response(f"JSON parsing failed: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error in _parse_with_fallbacks: {str(e)}", exc_info=True)
+            return _create_error_response(f"An unexpected error occurred: {str(e)}")
 
     def _default_parsing(self, ai_message_content: str) -> ChatAssistantResponse:
         """
