@@ -1,8 +1,11 @@
 name: "Magic-Tales Helper"
-model: "gpt-4o-2024-08-06"
+model_type: "ollama"
+model: "llama3.1"
 temperature: 0.0
 instructions_path: "services/openai_assistants/helper_assistant/instructions/helper_assistant_instructions.txt"
 story_features_extraction_prompt_path: "services/openai_assistants/helper_assistant/instructions/story_features_extraction_prompt.txt"
 synopsis_extraction_prompt_path: "services/openai_assistants/helper_assistant/instructions/synopsis_extraction_prompt.txt"
+embedding_type: "openai"
+vector_store_type: "chroma"
 tools:
   - type: "file_search" 

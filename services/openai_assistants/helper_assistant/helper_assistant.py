@@ -4,7 +4,7 @@ from openai.types.beta.assistant_response_format_option_param import ResponseFor
 
 
 from services.utils.log_utils import get_logger
-from services.openai_assistants.assistant import Assistant
+from services.assistants.generic_assistant import Assistant
 from .helper_assistant_response import HelperAssistantResponse
 from .helper_assistant_input import HelperAssistantInput
 

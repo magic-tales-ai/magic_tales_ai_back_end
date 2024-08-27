@@ -1,4 +1,5 @@
 name: "Magic-Tales Supervisor Assistant"
+model_type: "openai"
 model: "gpt-4o-2024-08-06"
 temperature: 0.0
 instructions_path: "services/openai_assistants/supervisor_assistant/instructions/supervisor_assistant_instructions.txt"

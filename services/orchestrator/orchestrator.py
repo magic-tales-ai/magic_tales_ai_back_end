@@ -130,9 +130,7 @@ class MagicTalesCoreOrchestrator:
             config (DictConfig): Configuration parameters.
         """
         # Initialize logging
-        logger.info("Initializing MagicTales.")
-
-        self._validate_openai_api_key()
+        logger.info("Initializing MagicTales.")       
 
         # Configuration
         self.config = copy.deepcopy(config)
@@ -188,13 +186,7 @@ class MagicTalesCoreOrchestrator:
 
         self.chat_supervision_required = None
 
-        logger.info("MagicTales initialized.")
-
-    def _validate_openai_api_key(self) -> None:
-        """Validates the presence of the OpenAI API key."""
-        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
-        if not self.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is not set.")
+        logger.info("MagicTales initialized.")    
 
     def _cancel_token_refresh_task(self):
         if self.token_refresh_task:
@@ -330,21 +322,13 @@ class MagicTalesCoreOrchestrator:
 
         # HELPER ASSISTANT
         try:
-            await self.helper_assistant.start_assistant(helper_id, files_paths)
+            await self.helper_assistant.start_assistant(files_paths)
         except ValueError as e:
             logger.error(f"Error initializing the Helper assistant: {e}")
             await self._send_error_message(
                 "We are currently experiencing technical difficulties. Please try again later."
             )
-            return
-
-        if helper_id != self.helper_assistant.openai_assistant.id:
-            logger.warn(
-                f"User {self.user_id} had HELPER assistant {helper_id}, which was not found. It's going to be updated. This should only happen with brand new users!"
-            )
-            await self.database_manager.update_user_record_by_id(
-                self.user_id, {"helper_id": self.helper_assistant.openai_assistant.id}
-            )
+            return        
 
         # SUPERVISOR ASSISTANT
         try:

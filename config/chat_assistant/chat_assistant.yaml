@@ -1,4 +1,5 @@
 name: "Smarty Tales"
+model_type: "openai"
 model: "gpt-4o-2024-08-06"
 temperature: 0.1
 instructions_path: "services/openai_assistants/chat_assistant/instructions/chat_assistant_instructions.txt"

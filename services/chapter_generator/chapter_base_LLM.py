@@ -7,6 +7,7 @@ from langchain_community.callbacks.openai_info import OpenAICallbackHandler
 
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_ollama import OllamaLLM
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain.schema import BaseMessage, OutputParserException
 

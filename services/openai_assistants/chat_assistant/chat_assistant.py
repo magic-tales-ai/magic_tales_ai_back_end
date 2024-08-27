@@ -15,8 +15,10 @@ from .chat_assistant_input import ChatAssistantInput
 logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
+
 class JSONParsingError(Exception):
     pass
+
 
 class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
     def __init__(self, config):
@@ -46,7 +48,8 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
 
         Returns:
             ChatAssistantResponse: Containing extracted information or error details.
-        """    
+        """
+
         def _safe_json_loads(content: str) -> Dict[str, Any]:
             """Safely attempt to parse JSON content."""
             try:
@@ -58,18 +61,21 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
         def _extract_json_from_codeblock(content: str) -> str:
             """Extract JSON content from a markdown code block if present."""
             import re
-            json_pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
+
+            json_pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
             match = re.search(json_pattern, content)
             return match.group(1) if match else content
 
         def _sanitize_content(content: str) -> str:
             """Remove potential problematic characters from the content."""
-            return content.strip().replace('\n', '').replace('\r', '')
+            return content.strip().replace("\n", "").replace("\r", "")
 
         def _validate_message_for_system(msg: Any) -> Dict[str, Any]:
             """Ensure message_for_system is a dictionary."""
             if not isinstance(msg, dict):
-                logger.warning("message_for_system is not a dictionary. Converting to empty dict.")
+                logger.warning(
+                    "message_for_system is not a dictionary. Converting to empty dict."
+                )
                 return {}
             return msg
 
@@ -79,35 +85,39 @@ class ChatAssistant(Assistant[ChatAssistantInput, ChatAssistantResponse]):
                 message_for_user=ai_message_content,
                 message_for_system=None,
                 user_language=None,
-                error=error_msg
+                error=error_msg,
             )
 
         try:
             # Extract JSON if it's within a code block
             content = _extract_json_from_codeblock(ai_message_content)
-            
+
             # Sanitize the content
             sanitized_content = _sanitize_content(content)
-            
+
             # Parse the JSON
             parsed_content = _safe_json_loads(sanitized_content)
-            
+
             # Extract and validate fields
             message_for_user = parsed_content.get("message_for_user")
-            message_for_system = _validate_message_for_system(parsed_content.get("message_for_system"))
+            message_for_system = _validate_message_for_system(
+                parsed_content.get("message_for_system")
+            )
             user_language = parsed_content.get("user_language")
-            
+
             return ChatAssistantResponse(
                 message_for_user=message_for_user,
                 message_for_system=message_for_system,
                 user_language=user_language,
-                error=None
+                error=None,
             )
-        
+
         except JSONParsingError as e:
             return _create_error_response(f"JSON parsing failed: {str(e)}")
         except Exception as e:
-            logger.error(f"Unexpected error in _parse_with_fallbacks: {str(e)}", exc_info=True)
+            logger.error(
+                f"Unexpected error in _parse_with_fallbacks: {str(e)}", exc_info=True
+            )
             return _create_error_response(f"An unexpected error occurred: {str(e)}")
 
     def _default_parsing(self, ai_message_content: str) -> ChatAssistantResponse:

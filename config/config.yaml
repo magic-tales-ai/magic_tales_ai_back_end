@@ -6,10 +6,11 @@ defaults:
   - chapter_scoring: chapter_scoring  
   - image_prompt_generator: image_prompt_generator
   - image_generator: dalle3   
-  - main_llm: main_llm
+  - chapter_generation/critic_llm: critic_llm
+  - chapter_generation/generation_llm: generation_llm
+  - chapter_generation/parser_llm: parser_llm
   - mcts: mcts
   - output_artifacts: output_artifacts
-  - parser_llm: parser_llm    
   - synthesizer: azure_synthesizer
   - database: database  
   - updates_request_prompts: updates_request_prompts
