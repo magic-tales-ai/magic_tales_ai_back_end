@@ -148,31 +148,61 @@ class Assistant(ABC, Generic[TInput, TResponse]):
 
         Args:
             file_paths (List[str]): List of paths to the documents to load and embed.
+
+        Returns:
+            List[Document]: A list of Document objects created from the files' contents.
         """
-        documents = []
+        all_documents = []
         try:
             for file_path in file_paths:
                 try:
                     # Load the document
-                    content = self._extract_text_from_file(file_path)
+                    document = await self._extract_text_from_file(file_path)
 
                     # Handle large documents by chunking
-                    chunks = self._chunk_text(content)
+                    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                    splits = text_splitter.split_documents(document)
 
-                    # Create Document objects with minimal metadata
-                    for i, chunk in enumerate(chunks):
-                        document = Document(
-                            page_content=chunk,
-                            metadata={"document_name": file_path, "chunk_id": i},
-                        )
-                        documents.append(document)
+                    # Append the split documents to the all_documents list
+                    all_documents.extend(splits)
+                    
                 except Exception as e:
                     logger.error(f"Could not load file {file_path}: {e}")
                     continue
 
-            return documents
+            return all_documents
         except Exception as e:
-            logger.error(f"Error in creating and uploading knowledge files: {e}")
+            logger.error(f"Error in loading documents: {e}")
+            raise
+
+    async def _extract_text_from_file(self, file_path: str) -> Document:
+        """
+        Extract text from a file and return a Langchain Document.
+
+        Args:
+            file_path (str): The path to the file.
+
+        Returns:
+            Document: A Langchain Document object containing the text content and metadata.
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            
+            # Create a Document object with the content and metadata
+            document = Document(
+                page_content=content,
+                metadata={
+                    "source": file_path,
+                    "file_name": os.path.basename(file_path),
+                    "file_size": os.path.getsize(file_path),
+                    "file_type": os.path.splitext(file_path)[-1]
+                }
+            )
+            return document
+
+        except Exception as e:
+            logger.error(f"Error extracting text from file {file_path}: {e}")
             raise
 
     async def _upload_knowledge_files(self, file_paths: List[str]) -> None:
@@ -186,7 +216,7 @@ class Assistant(ABC, Generic[TInput, TResponse]):
             await self._create_vector_store()
 
         try:
-            self.vector_store.adelete()
+            self.vector_store.delete_collection()
 
             # Add documents to the vector store
             documents = await self._load_documents(file_paths)
@@ -234,6 +264,7 @@ class Assistant(ABC, Generic[TInput, TResponse]):
         try:
             prompt = await self._build_prompt(message_for_assistant)
             ai_response = await self.llm.agenerate(prompt)
+            logger.info(f"Raw AI Respose from {self.config.name}:{ai_response}")
 
             response = await self._process_ai_response(ai_response, parsing_method)
 
@@ -304,11 +335,11 @@ class Assistant(ABC, Generic[TInput, TResponse]):
         Returns:
             str: The constructed prompt.
         """
-        message_to_assistant = HumanMessage(json.dumps(await message_for_assistant.to_json()))
-        full_message_for_assistant = [
+        message_to_assistant = json.dumps(await message_for_assistant.to_json())
+        full_message_for_assistant = ChatPromptTemplate.from_messages([
             self.instructions,
-            message_to_assistant
-        ]
+            ("human", message_to_assistant)
+        ])
         logger.info(f"Message sent to {self.config.name}: {full_message_for_assistant}")
         return full_message_for_assistant
 

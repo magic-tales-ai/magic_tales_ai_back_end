@@ -322,7 +322,7 @@ class MagicTalesCoreOrchestrator:
 
         # HELPER ASSISTANT
         try:
-            await self.helper_assistant.start_assistant(files_paths)
+            await self.helper_assistant.start_assistant()
         except ValueError as e:
             logger.error(f"Error initializing the Helper assistant: {e}")
             await self._send_error_message(
@@ -1699,7 +1699,7 @@ class MagicTalesCoreOrchestrator:
         """
         try:
             self.chapter_generation_mechanism = ChapterGenerationMechanism(
-                config=self.config,
+                config=self.config.chapter_generation_mechanism,
                 story_blueprint=story_blueprint,
                 previous_chapter_content=previous_chapter_content,
             )
@@ -1779,7 +1779,7 @@ class MagicTalesCoreOrchestrator:
         await self._generate_system_request_to_update_user(message)
 
         self.image_prompt_generation_mechanism = ImagePromptGenerationMechanism(
-            config=self.config
+            config=self.config.image_prompt_generator
         )
 
         # Generate cover image prompt

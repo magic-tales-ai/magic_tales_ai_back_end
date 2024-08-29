@@ -1,9 +1,11 @@
 import copy
 
-from typing import Any, Dict, List
+from typing import Any, Dict, Union
+
 
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_ollama import OllamaLLM
 
 from omegaconf import DictConfig
 
@@ -30,31 +32,50 @@ class ImagePromptGenerationMechanism:
         """
         Initialize the ImagePromptGenerationMechanism class.
         """
-        self.config = config
-        self.initialize_llms()
+        self.config = config        
         self.top_level_creation_folder = None
         self.subfolders = {"image_prompts": "image_prompts"}
 
-    def initialize_llms(self):
+        self.initialize_llms(self.config)
+
+    def initialize_llms(self, config: DictConfig):
         """
         Initialize the LLMs for image prompt generation.
         """
+        main_llm = self._load_llm(config)        
+        parser_llm = self._load_llm(config)
+
         self.image_prompt_generator = ImagePromptGeneratorLLM(
-            main_llm=ChatOpenAI(
-                model_name=self.config.image_prompt_generator.model,
-                temperature=self.config.image_prompt_generator.temperature,
-                verbose=True,
-                timeout=self.config.image_prompt_generator.request_timeout,
-            ),
-            parser_llm=ChatOpenAI(
-                model_name=self.config.parser_llm.model,
-                temperature=self.config.parser_llm.temperature,
-                verbose=True,
-                request_timeout=self.config.parser_llm.request_timeout,
-            ),
-            num_outputs=self.config.main_llm.num_responses,
+            main_llm=main_llm,
+            parser_llm=parser_llm,
+            num_outputs=self.config.num_responses,
             prompt_constructor=prompt_constructor,
         )
+
+    def _load_llm(self, llm_config: DictConfig) -> Union[ChatOpenAI, ChatAnthropic, OllamaLLM]:
+        """
+        Load an LLM model based on the provided configuration.
+
+        Args:
+            llm_config (DictConfig): The configuration for the LLM model.
+
+        Returns:
+            Union[ChatOpenAI, ChatAnthropic, OllamaLLM]: The loaded LLM model.
+        """
+        model_type = llm_config.model_type
+        model_name = llm_config.model
+        temperature = llm_config.temperature
+        max_tokens = llm_config.max_tokens
+        request_timeout = llm_config.request_timeout
+
+        if model_type == "openai":
+            return ChatOpenAI(model_name=model_name, temperature=temperature, max_tokens=max_tokens, request_timeout=request_timeout)
+        elif model_type == "anthropic":
+            return ChatAnthropic(model=model_name, temperature=temperature, max_tokens=max_tokens, request_timeout=request_timeout)
+        elif model_type == "ollama":
+            return OllamaLLM(model=model_name, temperature=temperature, max_tokens=max_tokens, request_timeout=request_timeout)
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
 
     def _generate_single_image_prompt(self, prompt: str) -> Dict[str, Any]:
         """Generate a single image prompt."""
@@ -99,7 +120,7 @@ class ImagePromptGenerationMechanism:
         )
         logger.info(log_message)
 
-        for attempt in range(1, self.config.main_llm.max_retries + 1):
+        for attempt in range(1, self.config.max_retries + 1):
             try:
                 (
                     image_prompt_responses,
@@ -150,7 +171,7 @@ class ImagePromptGenerationMechanism:
             is_cover (bool): Whether this is for the cover image.
         """
         if (
-            self.config.output_artifacts.visualize_image_prompt_generator_response
+            self.config.visualize_image_prompt_generator_response
             and image_prompt_generator_response_dict.get(
                 "image_prompt_generator_success", False
             )

@@ -2,18 +2,19 @@ defaults:
   - _self_
   - chat_assistant: chat_assistant  
   - helper_assistant: helper_assistant
-  - supervisor_assistant: supervisor_assistant
-  - chapter_scoring: chapter_scoring  
+  - supervisor_assistant: supervisor_assistant  
   - image_prompt_generator: image_prompt_generator
   - image_generator: dalle3   
-  - chapter_generation/critic_llm: critic_llm
-  - chapter_generation/generation_llm: generation_llm
-  - chapter_generation/parser_llm: parser_llm
-  - mcts: mcts
-  - output_artifacts: output_artifacts
+  - chapter_generation_mechanism/critic_llm: critic_llm
+  - chapter_generation_mechanism/generator_llm: generator_llm
+  - chapter_generation_mechanism/parser_llm: parser_llm
+  - chapter_generation_mechanism/mcts: mcts
+  - chapter_generation_mechanism/chapter_scoring: chapter_scoring  
+  - chapter_generation_mechanism/output_artifacts: output_artifacts
   - synthesizer: azure_synthesizer
   - database: database  
   - updates_request_prompts: updates_request_prompts
+  - output_artifacts: output_artifacts  
 
 hydra:
   run:

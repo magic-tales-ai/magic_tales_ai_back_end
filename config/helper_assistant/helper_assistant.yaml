@@ -7,5 +7,7 @@ story_features_extraction_prompt_path: "services/openai_assistants/helper_assist
 synopsis_extraction_prompt_path: "services/openai_assistants/helper_assistant/instructions/synopsis_extraction_prompt.txt"
 embedding_type: "openai"
 vector_store_type: "chroma"
+memory_key: "chat_history"
+human_input_key: "human_input"
 tools:
   - type: "file_search" 

@@ -4,8 +4,12 @@ import json
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 import random
+
+
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_ollama import OllamaLLM
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from langchain.schema import messages_to_dict
@@ -17,6 +21,9 @@ from .chapter_generator_LLM import (
 from .chapter_critic_LLM import (
     ChapterCriticLLM,
 )
+
+from services.prompts_constructors.generator import prompt_constructor as generator_prompt_constructor
+from services.prompts_constructors.critic import prompt_constructor as critic_prompt_constructor
 
 from .utils.saving_loading_utils import (
     create_top_level_chapter_folder,
@@ -67,38 +74,27 @@ class ChapterGenerationMechanism:
         # Initialize the Global & static node counter to 0
         ChapterNode.node_counter = 0
 
-        main_llm = ChatOpenAI(
-            model_name=self.config.main_llm.model,
-            temperature=self.config.main_llm.temperature,
-            # max_tokens=self.config.main_llm.max_tokens,
-            # model_kwargs={"top_p": self.config.main_llm.top_p},
-            verbose=True,
-            timeout=self.config.main_llm.request_timeout,
-        )
-
-        parser_llm = ChatOpenAI(
-            model_name=self.config.parser_llm.model,
-            temperature=self.config.parser_llm.temperature,
-            # max_tokens=self.config.parser_llm.max_tokens,
-            # model_kwargs={"top_p": self.config.parser_llm.top_p},
-            verbose=True,
-            request_timeout=self.config.parser_llm.request_timeout,
-        )
+        generator_main_llm = self._load_llm(config.generator_llm)
+        critic_main_llm = self._load_llm(config.critic_llm)
+        parser_llm = self._load_llm(config.parser_llm)
+        
 
         # Initialize Generation and Critic+Scorer Agents
         self.chapter_generator = ChapterGeneratorLLM(
-            main_llm=main_llm,
+            main_llm=generator_main_llm,
             parser_llm=parser_llm,
+            prompt_constructor=generator_prompt_constructor, 
             story_blueprint=story_blueprint,
             previous_chapter_content=previous_chapter_content,
-            num_outputs=self.config.main_llm.num_responses,
+            num_outputs=self.config.generator_llm.num_responses,
         )
         self.chapter_critic = ChapterCriticLLM(
-            main_llm=main_llm,
+            main_llm=critic_main_llm,
             parser_llm=parser_llm,
+            prompt_constructor=critic_prompt_constructor,
             story_blueprint=story_blueprint,
             previous_chapter_content=previous_chapter_content,
-            num_outputs=self.config.parser_llm.num_responses,
+            num_outputs=self.config.critic_llm.num_responses,
         )
 
         self.top_level_creation_folder = None
@@ -112,6 +108,31 @@ class ChapterGenerationMechanism:
 
         self.current_creation_cycle = 0
         self.chapter_tree = ChapterTree(self.config.mcts, self.config.chapter_scoring)
+
+    def _load_llm(self, llm_config: DictConfig) -> Union[ChatOpenAI, ChatAnthropic, OllamaLLM]:
+        """
+        Load an LLM model based on the provided configuration.
+
+        Args:
+            llm_config (DictConfig): The configuration for the LLM model.
+
+        Returns:
+            Union[ChatOpenAI, ChatAnthropic, OllamaLLM]: The loaded LLM model.
+        """
+        model_type = llm_config.model_type
+        model_name = llm_config.model
+        temperature = llm_config.temperature
+        max_tokens = llm_config.max_tokens
+        request_timeout = llm_config.request_timeout
+
+        if model_type == "openai":
+            return ChatOpenAI(model_name=model_name, temperature=temperature)
+        elif model_type == "anthropic":
+            return ChatAnthropic(model=model_name, temperature=temperature)
+        elif model_type == "ollama":
+            return OllamaLLM(model=model_name, temperature=temperature)
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
 
     @staticmethod
     def build_search_path(node: ChapterNode) -> List["ChapterNode"]:
@@ -410,7 +431,7 @@ class ChapterGenerationMechanism:
         chapter_candidate: Dict[str, str] = {}
         chapter_generator_prompt_messages = ["", ""]
 
-        for attempt in range(1, self.config.main_llm.max_retries + 1):
+        for attempt in range(1, self.config.generator_llm.max_retries + 1):
             try:
                 (
                     chapter_candidates,
@@ -432,7 +453,7 @@ class ChapterGenerationMechanism:
                 chapter_generator_success = False
                 tb = traceback.format_exc()
                 logger.info(
-                    f"We couldn't create the chapter (content). Attempt {attempt} of {self.config.main_llm.max_retries}.\nException: {e}\n{tb}"
+                    f"We couldn't create the chapter (content). Attempt {attempt} of {self.config.generator_llm.max_retries}.\nException: {e}\n{tb}"
                 )
 
         # Here we create a New chapter dict that will be held on the node
@@ -629,9 +650,12 @@ class ChapterGenerationMechanism:
                 node, "critique", "chapter_critic_response_dict"
             ),
             # "rationale": self.get_value_from_dict(node, "rationale", "chapter_critic_response_dict"),
-            "llm_model_name": self.chapter_generator.main_llm.model_name,
-            "llm_model_temperature": self.chapter_generator.main_llm.temperature,
-            "llm_additional_params": self.chapter_generator.main_llm.model_kwargs,
+            "generator_llm_model_name": self.config.generator_llm.model,
+            "generator_llm_model_temperature": self.config.generator_llm.temperature,
+            "critic_llm_model_name": self.config.critic_llm.model,
+            "critic_llm_model_temperature": self.config.critic_llm.temperature,
+
+            # "llm_additional_params": self.chapter_generator.main_llm.model_kwargs,
             "chapter_critic_prompt_messages": json.dumps(
                 messages_to_dict(
                     self.get_value_from_dict(

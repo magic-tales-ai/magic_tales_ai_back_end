@@ -1,4 +1,6 @@
-model: "gpt-4o-2024-08-06"
+name: "Magic-Tales Chapter Parser"
+model_type: "ollama"
+model: "llama3.1"
 temperature: 0.0
 num_responses: 1
 max_tokens: 60000

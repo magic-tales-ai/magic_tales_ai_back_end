@@ -66,7 +66,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     plot_consistency_score_schema = ResponseSchema(
         name="plot_consistency_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Plot Consistency: Does the chapter maintain the integrity of the overall plot? Are there any inconsistencies or plot holes?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Plot Consistency: Does the chapter maintain the integrity of the overall plot? Are there any inconsistencies or plot holes?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -74,7 +74,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     character_development_score_schema = ResponseSchema(
         name="character_development_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Character Development: Are the characters in the chapter well-rounded and do they undergo meaningful changes or face challenges?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Character Development: Are the characters in the chapter well-rounded and do they undergo meaningful changes or face challenges?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -82,7 +82,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     engagement_score_schema = ResponseSchema(
         name="engagement_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Engagement: Is the chapter engaging from start to finish? Does it have a mixture of tension, release, and pacing?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Engagement: Is the chapter engaging from start to finish? Does it have a mixture of tension, release, and pacing?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -90,7 +90,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     clarity_score_schema = ResponseSchema(
         name="clarity_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Clarity: Is the chapter easy to follow? Are events and character motivations clearly presented?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Clarity: Is the chapter easy to follow? Are events and character motivations clearly presented?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -98,7 +98,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     detailing_score_schema = ResponseSchema(
         name="detailing_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Detailing: Does the chapter include sufficient details to make scenes vivid and memorable?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Detailing: Does the chapter include sufficient details to make scenes vivid and memorable?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -106,7 +106,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     language_quality_score_schema = ResponseSchema(
         name="language_quality_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Language Quality: Is the language varied, grammatically correct, and does it fit the tone of the story, the audience, etc.?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Language Quality: Is the language varied, grammatically correct, and does it fit the tone of the story, the audience, etc.?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -114,7 +114,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     dialogue_score_schema = ResponseSchema(
         name="dialogue_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Dialogue: Is the dialogue between characters natural, relevant, and does it serve the plot?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Dialogue: Is the dialogue between characters natural, relevant, and does it serve the plot?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -122,7 +122,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     emotional_impact_score_schema = ResponseSchema(
         name="emotional_impact_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Emotional Impact: Does the chapter evoke the desired emotional responses from the reader? (e.g., suspense, joy, sadness)""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Emotional Impact: Does the chapter evoke the desired emotional responses from the reader? (e.g., suspense, joy, sadness)""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -130,7 +130,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     originality_score_schema = ResponseSchema(
         name="originality_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Originality: Is the chapter original, or does it offer new twists on familiar tropes?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Originality: Is the chapter original, or does it offer new twists on familiar tropes?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -138,7 +138,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     closure_score_schema = ResponseSchema(
         name="closure_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Closure: Does the chapter conclude in a way that is satisfying but also makes the reader want to move on to the next chapter?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Closure: Does the chapter conclude in a way that is satisfying but also makes the reader want to move on to the next chapter?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -146,7 +146,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     alignment_with_previous_chapter_score_schema = ResponseSchema(
         name="alignment_with_previous_chapter_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its Alignment with Previous Chapter: Does the chapter align well with events and tone set in the previous chapters?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its Alignment with Previous Chapter: Does the chapter align well with events and tone set in the previous chapters?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float
@@ -154,7 +154,7 @@ def _get_response_format_instructions_prompt_and_output_parser() -> (
 
     general_alignment_with_story_score_schema = ResponseSchema(
         name="general_alignment_with_story_score",
-        description="""Float variable between 0.0 to 10.0, that scores the chapter in its General Alignment with Story: Does the chapter align well with with all story information availalbe (Profile of the target indivudual, Story featrures, Synopsis, etc.)?""",
+        description="""Float variable between 0.0 to 10.0 (a single float and NOT a ratio like 'x.x/10'), that scores the chapter in its General Alignment with Story: Does the chapter align well with with all story information availalbe (Profile of the target indivudual, Story featrures, Synopsis, etc.)?""",
         validation=lambda x: isinstance(x, float)
         and 0.0 <= x <= 10.0,  # Must be a float between 0.0 and 10.0
         postprocess=float,  # Ensure the value is a float

@@ -1,13 +1,12 @@
 import logging
 from abc import ABC
 from types import ModuleType
-from typing import Dict, List, Optional, Tuple, Any
-
-from langchain_community.callbacks import get_openai_callback
-from langchain_community.callbacks.openai_info import OpenAICallbackHandler
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_ollama import OllamaLLM
+
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain.schema import BaseMessage, OutputParserException
 
@@ -26,9 +25,9 @@ class ImagePromptGeneratorLLM(ABC):
 
     def __init__(
         self,
-        main_llm: ChatOpenAI,
-        parser_llm: ChatOpenAI,
-        prompt_constructor: ModuleType,
+        main_llm: Union[ChatOpenAI, ChatAnthropic, OllamaLLM],
+        parser_llm: Union[ChatOpenAI, ChatAnthropic, OllamaLLM],
+        prompt_constructor: ModuleType,        
         num_outputs: Optional[int] = 1,
     ):
         """
@@ -44,25 +43,6 @@ class ImagePromptGeneratorLLM(ABC):
         self.parser_llm = parser_llm
         self.prompt_constructor = prompt_constructor
         self.num_outputs = num_outputs
-
-        self.total_tokens: int = 0
-        self.prompt_tokens: int = 0
-        self.completion_tokens: int = 0
-        self.total_cost: float = 0.0
-        self.successful_requests: int = 0
-
-    def _track_cost(self, cb: OpenAICallbackHandler):
-        """
-        Track the cost of using the LLM.
-
-        Args:
-            cb (OpenAICallbackHandler): The callback handler.
-        """
-        self.total_tokens += cb.total_tokens
-        self.prompt_tokens += cb.prompt_tokens
-        self.completion_tokens += cb.completion_tokens
-        self.total_cost += cb.total_cost
-        self.successful_requests += cb.successful_requests
 
     def generate_image_prompts(
         self, chapter_number: int, chapter_content: str, is_cover: bool = False
@@ -92,30 +72,21 @@ class ImagePromptGeneratorLLM(ABC):
         # Generate output
         output_artifacts = []
         for _ in range(self.num_outputs):
-            with get_openai_callback() as cb:
-                ai_message = self.main_llm(messages)
-                retry_output_parser = get_retry_output_parser(
-                    output_parser, self.parser_llm
+            ai_message = self.main_llm(messages)
+            retry_output_parser = get_retry_output_parser(
+                output_parser, self.parser_llm
+            )
+            try:
+                chat_prompt_value = ChatPromptTemplate.from_messages(
+                    messages
+                ).format_prompt()
+                output = retry_output_parser.parse_with_prompt(
+                    ai_message.content, chat_prompt_value
                 )
-                # Track cost for the main llm (producing responses)
-                self._track_cost(cb)
+                output_artifacts.append((True, output))
 
-            with get_openai_callback() as cb:
-                # Parse an output from LLM
-                try:
-                    chat_prompt_value = ChatPromptTemplate.from_messages(
-                        messages
-                    ).format_prompt()
-                    output = retry_output_parser.parse_with_prompt(
-                        ai_message.content, chat_prompt_value
-                    )
-                except OutputParserException as ex:
-                    logger.exception("Could not parse llm output")
-                    output_artifacts.append((False, dict()))
-                else:
-                    output_artifacts.append((True, output))
-
-                # Track cost for the parser llm (solving parsing problems with new requests to the an llm)
-                self._track_cost(cb)
+            except OutputParserException as ex:
+                logger.exception("Could not parse llm output")
+                output_artifacts.append((False, dict()))
 
         return output_artifacts, messages

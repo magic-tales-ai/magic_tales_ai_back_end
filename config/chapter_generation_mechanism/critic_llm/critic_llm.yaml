@@ -1,5 +1,6 @@
-model_type: "openai"
-model: "gpt-4o-2024-08-06"
+name: "Magic-Tales Chapter Critic"
+model_type: "anthropic"
+model: "claude-3-5-sonnet-20240620"
 temperature: 0.0
 num_responses: 1
 top_p: 0.001  

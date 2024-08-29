@@ -46,10 +46,10 @@ def save_general_creation_info(
         f"Saving general information about this creation full cycle on {save_to_file}"
     )
     try:
-        total_cost = (
-            chapter_generation_mechanism.chapter_generator.total_cost
-            + chapter_generation_mechanism.chapter_critic.total_cost
-        )
+        # total_cost = (
+        #     chapter_generation_mechanism.chapter_generator.total_cost
+        #     + chapter_generation_mechanism.chapter_critic.total_cost
+        # )
         best_chapter_id = (
             chapter_generation_mechanism.chapter_tree.best_chapter.node_id
             if chapter_generation_mechanism.chapter_tree.best_chapter is not None
@@ -57,17 +57,17 @@ def save_general_creation_info(
         )
         creation_info_dict = {
             "config": chapter_generation_mechanism.config,
-            "total_cost": total_cost,
-            "chapter_generator_total_tokens": chapter_generation_mechanism.chapter_generator.total_tokens,
-            "chapter_generator_prompt_tokens": chapter_generation_mechanism.chapter_generator.prompt_tokens,
-            "chapter_generator_completion_tokens": chapter_generation_mechanism.chapter_generator.completion_tokens,
-            "chapter_generator_total_cost: float": chapter_generation_mechanism.chapter_generator.total_cost,
-            "chapter_generator_successful_requests": chapter_generation_mechanism.chapter_generator.successful_requests,
-            "chapter_critic_total_tokens": chapter_generation_mechanism.chapter_critic.total_tokens,
-            "chapter_critic_prompt_tokens": chapter_generation_mechanism.chapter_critic.prompt_tokens,
-            "chapter_critic_completion_tokens": chapter_generation_mechanism.chapter_critic.completion_tokens,
-            "chapter_critic_total_cost: float": chapter_generation_mechanism.chapter_critic.total_cost,
-            "chapter_critic_successful_requests": chapter_generation_mechanism.chapter_critic.successful_requests,
+            # "total_cost": total_cost,
+            # "chapter_generator_total_tokens": chapter_generation_mechanism.chapter_generator.total_tokens,
+            # "chapter_generator_prompt_tokens": chapter_generation_mechanism.chapter_generator.prompt_tokens,
+            # "chapter_generator_completion_tokens": chapter_generation_mechanism.chapter_generator.completion_tokens,
+            # "chapter_generator_total_cost: float": chapter_generation_mechanism.chapter_generator.total_cost,
+            # "chapter_generator_successful_requests": chapter_generation_mechanism.chapter_generator.successful_requests,
+            # "chapter_critic_total_tokens": chapter_generation_mechanism.chapter_critic.total_tokens,
+            # "chapter_critic_prompt_tokens": chapter_generation_mechanism.chapter_critic.prompt_tokens,
+            # "chapter_critic_completion_tokens": chapter_generation_mechanism.chapter_critic.completion_tokens,
+            # "chapter_critic_total_cost: float": chapter_generation_mechanism.chapter_critic.total_cost,
+            # "chapter_critic_successful_requests": chapter_generation_mechanism.chapter_critic.successful_requests,
             "folder_name": chapter_generation_mechanism.top_level_creation_folder,
             "best_chapter_id": best_chapter_id,
             "max_tree_depth": chapter_generation_mechanism.chapter_tree.max_tree_depth,
