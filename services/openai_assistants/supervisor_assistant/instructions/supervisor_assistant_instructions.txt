@@ -120,8 +120,12 @@ All responses must be in single-line JSON format:
 
       - "start_story_generation" command:
          - pre-requisites: 
-            - The Chat Assistant MUST have created, at least, one sysnopis and the user MUST have agreed to it.
-            - Without any previous synopsis THIS COMMAND IS NOT VALID AND MUST BE REJECTED AND FLAGED BY ME.
+            - The Chat Assistant MUST SEND THIS COMMAND AFTER:
+                  1) WE HAVE CLEAR STORY FETURES captured in the conversation,  
+                  2) THERE IS AT LEAST ONE SYNOPSYS SHOWN TO THE USER AND MOST IMPORTANTLY 
+                  3) A SYNOPSIS HAS BEEN APROVED BY THE USER to move forward and start teh story genration process.                   
+            - Without any synopsis shown to the user and aproved by the user, THIS COMMAND IS NOT VALID AND MUST BE REJECTED AND FLAGED BY ME.
+         NOTE: I WILL NEVER FLAG THE ASSISTANT AND ASK TO SEND THIS COMMAND UNLESS: 1) WE HAVE CLEAR STORY FETURES, 2) THERE IS AT LEAST ONE SYNOPSYS SHOWN TO THE USER AND MOST IMPORTANTLY 3) A SYNOPSIS HAS BEEN APROVED BY THE USER
          - format:
             "message_for_system":
             {

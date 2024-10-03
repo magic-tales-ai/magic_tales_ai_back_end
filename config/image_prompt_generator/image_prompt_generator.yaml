@@ -1,6 +1,6 @@
 name: "Magic-Tales Chapter Generator"
-model_type: "ollama"
-model: "llama3.1"
+model_type: "openai"
+model: "gpt-4o-2024-08-06"
 temperature: 0.0
 num_responses: 1
 top_p: 0.001  
