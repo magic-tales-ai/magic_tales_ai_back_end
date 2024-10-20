@@ -1,6 +1,6 @@
 name: "Magic-Tales Chapter Critic"
 model_type: "openai"
-model: "GPT-4o"
+model: "gpt-4o"
 temperature: 0.0
 num_responses: 1
 top_p: 0.001  
