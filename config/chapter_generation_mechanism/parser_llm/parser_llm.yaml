@@ -1,6 +1,6 @@
 name: "Magic-Tales Chapter Parser"
-model_type: "anthropic"
-model: "claude-3-5-sonnet-20240620"
+model_type: "openai"
+model: "GPT-4o"
 temperature: 0.0
 num_responses: 1
 max_tokens: 60000
