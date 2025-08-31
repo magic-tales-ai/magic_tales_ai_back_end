@@ -1,5 +1,5 @@
 _target_: magic_tales.image_generators.dalle.DALLEImageGenerator
-api_key: "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"
+api_key: ""
 num_images: 1
 size: "768x512"
 

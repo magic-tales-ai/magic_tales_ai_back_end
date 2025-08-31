@@ -1,5 +1,5 @@
 _target_: magic_tales.image_generators.dream_studio.DreamStudioImageGenerator
-api_key: 'sk-hivsugVMwAZND0k9JZ9sSJ3lDU9gh87t7DgDLvz5mtZQ9wya'
+api_key: ''
 host: 'grpc.stability.ai:443'
 engine: 'stable-diffusion-xl-1024-v1-0'
 steps: 50

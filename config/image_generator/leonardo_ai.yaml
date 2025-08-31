@@ -1,6 +1,6 @@
 _target_: magic_tales.image_generators.leonardo_ai.LeonardoAiImageGenerator
 config:
-  api_key: "c91677ba-3298-4f72-8b3b-c4778714a6c9" 
+  api_key: "" 
   alchemy: True
   contrast_ratio: 0.5
   control_net: False
